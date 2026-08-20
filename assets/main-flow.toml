@@ -1,0 +1,55 @@
+# The flow this repo follows. This file is yours — edit it.
+#
+# `flow` never executes a stage's `command`; it prints it and records that the
+# stage happened. Stages run in the order they appear here.
+#
+#   name        identifier used on the command line
+#   description what this stage is for, shown by `flow next`
+#   command     the literal string your agent should run
+#   artifact    what the stage should leave behind. A path (where {slug} is
+#               replaced by the run's slug) is checked on disk and is how a
+#               died-mid-stage session is detected. A "tracker:" value is
+#               recorded but never checked.
+#   optional    may be passed over with `flow skip`
+#   repeatable  expected to be run more than once
+
+name = "main-flow"
+description = "The idea → ship spine, in order."
+
+[[stage]]
+name = "grill"
+description = "Interview until the plan is sharp. Produces decisions, a glossary and ADRs."
+command = "/grill-with-docs"
+artifact = ".scratch/{slug}/grill.md"
+optional = false
+repeatable = false
+
+[[stage]]
+name = "spec"
+description = "Synthesise the conversation into a spec and publish it to the tracker."
+command = "/to-spec"
+artifact = "tracker:issue"
+optional = false
+repeatable = false
+
+[[stage]]
+name = "tickets"
+description = "Break the spec into vertical slices with blocking edges, published to the tracker."
+command = "/to-tickets"
+artifact = "tracker:issues"
+optional = true
+repeatable = false
+
+[[stage]]
+name = "implement"
+description = "Build it, working the frontier of unblocked tickets. Test-first at the agreed seams."
+command = "/implement"
+optional = false
+repeatable = true
+
+[[stage]]
+name = "review"
+description = "Review the work against the standards and against what the spec asked for."
+command = "/code-review"
+optional = false
+repeatable = true
