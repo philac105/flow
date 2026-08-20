@@ -356,8 +356,30 @@ pub fn load_all(root: &Path) -> Result<Vec<Run>> {
     Ok(runs)
 }
 
-/// Resolve a run by slug, or fall back to the only active run when the repo has
-/// exactly one — so `flow next` needs no argument in the common case.
+/// The run you are working on, like a checked-out branch. Local to your
+/// checkout — `.flow/.gitignore` keeps it out of the repo.
+pub fn current_path(root: &Path) -> PathBuf {
+    crate::flow::flow_dir(root).join("current")
+}
+
+pub fn read_current(root: &Path) -> Option<String> {
+    let slug = std::fs::read_to_string(current_path(root)).ok()?;
+    let slug = slug.trim().to_string();
+    (!slug.is_empty()).then_some(slug)
+}
+
+pub fn set_current(root: &Path, slug: &str) -> Result<()> {
+    let path = current_path(root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, format!("{slug}\n"))?;
+    Ok(())
+}
+
+/// Resolve a run: the one named, else the one you switched to, else the only
+/// active one. Ambiguity is never guessed at — a wrong guess on `flow done`
+/// would write a lie into the file a later session trusts.
 pub fn resolve(root: &Path, slug: Option<&str>) -> Result<Run> {
     if let Some(slug) = slug {
         let path = Run::path_for(root, slug);
@@ -367,13 +389,24 @@ pub fn resolve(root: &Path, slug: Option<&str>) -> Result<Run> {
         return Run::load(&path);
     }
     let all = load_all(root)?;
+
+    // The run you switched to wins, as long as it is still going.
+    if let Some(current) = read_current(root) {
+        if let Some(run) = all
+            .iter()
+            .find(|r| r.meta.slug == current && !r.is_finished())
+        {
+            return Ok(run.clone());
+        }
+    }
+
     let mut active: Vec<Run> = all.iter().filter(|r| !r.is_finished()).cloned().collect();
     match active.len() {
         1 => return Ok(active.remove(0)),
         n if n > 1 => {
             let names: Vec<&str> = active.iter().map(|r| r.meta.slug.as_str()).collect();
             return Err(anyhow!(
-                "several active runs — name one of: {}",
+                "several active runs and none is current — `flow switch <run>`, or name one of: {}",
                 names.join(", ")
             ));
         }

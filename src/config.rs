@@ -12,6 +12,9 @@ use std::path::PathBuf;
 pub struct UserConfig {
     #[serde(default)]
     pub agent: String,
+    /// Which built-in flow a bare `flow init` writes.
+    #[serde(default)]
+    pub preset: String,
     #[serde(default)]
     pub agents: BTreeMap<String, Launcher>,
 }

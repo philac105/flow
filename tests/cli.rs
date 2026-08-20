@@ -233,22 +233,17 @@ fn next_and_done_need_no_slug_when_one_run_is_active() {
 }
 
 #[test]
-fn next_and_done_demand_a_slug_when_several_runs_are_active() {
+fn several_active_runs_are_disambiguated_by_the_pointer_or_by_name() {
     let dir = repo_with_run();
     flow(dir.path())
         .args(["start", "Other thing"])
         .assert()
         .success();
 
-    flow(dir.path())
-        .arg("next")
-        .assert()
-        .failure()
-        .stderr(predicates::str::contains("auth-rework"));
-    flow(dir.path())
-        .args(["next", "auth-rework"])
-        .assert()
-        .success();
+    // Starting `other-thing` made it current, so bare commands mean that one.
+    assert!(stdout(flow(dir.path()).arg("next")).contains("Other thing"));
+    // Naming a run always wins over the pointer.
+    assert!(stdout(flow(dir.path()).args(["next", "auth-rework"])).contains("Auth rework"));
 }
 
 #[test]
@@ -1157,4 +1152,200 @@ fn init_points_a_new_user_at_the_setup_command() {
     let dir = TempDir::new().unwrap();
     let out = stdout(flow(dir.path()).arg("init"));
     assert!(out.contains("flow config --init"), "got:\n{out}");
+}
+
+// --- which run bare commands act on ----------------------------------------
+
+#[test]
+fn starting_a_run_makes_it_current() {
+    let dir = repo();
+    flow(dir.path()).args(["start", "First"]).assert().success();
+    flow(dir.path())
+        .args(["start", "Second"])
+        .assert()
+        .success();
+
+    // Bare commands follow the pointer, not a guess about recency.
+    assert!(stdout(flow(dir.path()).arg("next")).contains("Second"));
+    assert!(stdout(flow(dir.path()).arg("status")).contains("* second"));
+}
+
+#[test]
+fn switch_changes_what_bare_commands_act_on() {
+    let dir = repo();
+    flow(dir.path()).args(["start", "First"]).assert().success();
+    flow(dir.path())
+        .args(["start", "Second"])
+        .assert()
+        .success();
+
+    flow(dir.path())
+        .args(["switch", "first"])
+        .assert()
+        .success();
+
+    assert!(stdout(flow(dir.path()).arg("next")).contains("First"));
+    flow(dir.path())
+        .args(["done", "-m", "note"])
+        .assert()
+        .success();
+    // The one that was not current is untouched.
+    assert!(read(dir.path(), ".flow/runs/second.md").contains("in_progress"));
+    assert!(stdout(flow(dir.path()).args(["show", "first"])).contains("note"));
+}
+
+#[test]
+fn an_explicit_slug_still_beats_the_pointer() {
+    let dir = repo();
+    flow(dir.path()).args(["start", "First"]).assert().success();
+    flow(dir.path())
+        .args(["start", "Second"])
+        .assert()
+        .success();
+
+    assert!(stdout(flow(dir.path()).args(["next", "first"])).contains("First"));
+}
+
+#[test]
+fn a_finished_current_run_stops_being_followed() {
+    let dir = repo();
+    flow(dir.path()).args(["start", "First"]).assert().success();
+    flow(dir.path())
+        .args(["start", "Second"])
+        .assert()
+        .success();
+    flow(dir.path())
+        .args(["finish", "-m", "shipped"])
+        .assert()
+        .success();
+
+    // `second` was current and is now finished, so `first` is the only one left.
+    assert!(stdout(flow(dir.path()).arg("next")).contains("First"));
+}
+
+#[test]
+fn ambiguity_with_no_pointer_is_refused_rather_than_guessed() {
+    let dir = repo();
+    flow(dir.path()).args(["start", "First"]).assert().success();
+    flow(dir.path())
+        .args(["start", "Second"])
+        .assert()
+        .success();
+    std::fs::remove_file(dir.path().join(".flow/current")).unwrap();
+
+    flow(dir.path())
+        .args(["done", "-m", "which one?"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("flow switch"));
+}
+
+#[test]
+fn the_current_pointer_stays_out_of_the_repo() {
+    let dir = repo();
+    let ignore = read(dir.path(), ".flow/.gitignore");
+    assert!(ignore.contains("/current"));
+}
+
+#[test]
+fn switching_to_an_unknown_run_fails() {
+    let dir = repo_with_run();
+    flow(dir.path()).args(["switch", "nope"]).assert().failure();
+}
+
+// --- choosing a flow -------------------------------------------------------
+
+#[test]
+fn presets_lists_the_built_in_flows() {
+    let dir = repo();
+    let out = stdout(flow(dir.path()).arg("presets"));
+    for name in ["main-flow", "minimal", "bugfix"] {
+        assert!(out.contains(name), "presets missing {name}:\n{out}");
+    }
+    assert!(
+        out.contains("* main-flow"),
+        "main-flow should be the default:\n{out}"
+    );
+}
+
+#[test]
+fn a_named_preset_is_written_out() {
+    let dir = TempDir::new().unwrap();
+    flow(dir.path())
+        .args(["init", "--preset", "bugfix"])
+        .assert()
+        .success();
+
+    let toml = read(dir.path(), ".flow/flow.toml");
+    assert!(toml.contains("name = \"bugfix\""));
+    for stage in ["reproduce", "diagnose", "fix", "verify"] {
+        assert!(toml.contains(&format!("name = \"{stage}\"")));
+    }
+    // And it is a real flow, not just a file.
+    flow(dir.path())
+        .args(["start", "Crash on load"])
+        .assert()
+        .success();
+    assert!(stdout(flow(dir.path()).arg("next")).contains("reproduce"));
+}
+
+#[test]
+fn every_built_in_preset_actually_works() {
+    for preset in ["main-flow", "minimal", "bugfix"] {
+        let dir = TempDir::new().unwrap();
+        flow(dir.path())
+            .args(["init", "--preset", preset])
+            .assert()
+            .success();
+        flow(dir.path()).args(["start", "Thing"]).assert().success();
+        flow(dir.path()).arg("next").assert().success();
+        flow(dir.path())
+            .args(["done", "-m", "n"])
+            .assert()
+            .success();
+        flow(dir.path()).arg("board").assert().success();
+    }
+}
+
+#[test]
+fn a_preset_can_be_a_file_you_wrote() {
+    let dir = TempDir::new().unwrap();
+    let mine = dir.path().join("mine.toml");
+    std::fs::write(
+        &mine,
+        "name = \"mine\"\n\n[[stage]]\nname = \"ponder\"\ncommand = \"/think\"\n",
+    )
+    .unwrap();
+
+    flow(dir.path())
+        .arg("init")
+        .arg("--preset")
+        .arg(&mine)
+        .assert()
+        .success();
+
+    assert!(read(dir.path(), ".flow/flow.toml").contains("ponder"));
+}
+
+#[test]
+fn the_user_config_can_change_which_flow_init_writes() {
+    let dir = TempDir::new().unwrap();
+    let config = dir.path().join("xdg/flow/config.toml");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    std::fs::write(&config, "preset = \"minimal\"\n").unwrap();
+
+    flow(dir.path()).arg("init").assert().success();
+
+    assert!(read(dir.path(), ".flow/flow.toml").contains("name = \"minimal\""));
+    assert!(stdout(flow(dir.path()).arg("presets")).contains("* minimal"));
+}
+
+#[test]
+fn an_unknown_preset_lists_the_ones_that_exist() {
+    let dir = TempDir::new().unwrap();
+    flow(dir.path())
+        .args(["init", "--preset", "nonsense"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("minimal"));
 }

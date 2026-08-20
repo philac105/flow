@@ -3,8 +3,27 @@ use crate::flow::{flow_path, runs_dir};
 use anyhow::{anyhow, Result};
 use std::path::Path;
 
-const MAIN_FLOW: &str = include_str!("../../assets/main-flow.toml");
 const ADAPTER_SKILL: &str = include_str!("../../assets/adapter-skill.md");
+
+/// The flows that ship in the binary. `flow init` writes one out and then
+/// forgets about it — the repo owns its copy from that moment (ADR-0003).
+pub const PRESETS: &[(&str, &str, &str)] = &[
+    (
+        "main-flow",
+        "The idea → ship spine, in order. Five stages, uses an issue tracker.",
+        include_str!("../../assets/main-flow.toml"),
+    ),
+    (
+        "minimal",
+        "Shape it, build it, check it. Three stages, nothing to install.",
+        include_str!("../../assets/minimal.toml"),
+    ),
+    (
+        "bugfix",
+        "Reproduce, diagnose, fix, verify. For defects rather than features.",
+        include_str!("../../assets/bugfix.toml"),
+    ),
+];
 
 const BLOCK_START: &str = "<!-- flow:start -->";
 const BLOCK_END: &str = "<!-- flow:end -->";
@@ -25,23 +44,29 @@ it alongside the work."#;
 
 /// Write a preset into the repo, plus the agent adapter. Additive and
 /// idempotent throughout — see ADR-0004.
-pub fn run(root: &Path, preset: &str) -> Result<()> {
-    let contents = match preset {
-        "main-flow" => MAIN_FLOW,
-        other => {
-            return Err(anyhow!(
-                "unknown preset `{other}` — the built-in preset is `main-flow`"
-            ))
-        }
-    };
+pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
+    // Which flow you reach for by default is a preference, so it lives with
+    // your other preferences (ADR-0007).
+    let (user, _) = crate::config::UserConfig::load()?;
+    let chosen = preset
+        .map(str::to_string)
+        .or_else(|| (!user.preset.is_empty()).then(|| user.preset.clone()))
+        .unwrap_or_else(|| PRESETS[0].0.to_string());
+    let contents = resolve_preset(&chosen)?;
 
     std::fs::create_dir_all(runs_dir(root))?;
+    // Which run you are on is yours, like a checked-out branch. A gitignore
+    // inside .flow keeps it local without touching the repo's own.
+    std::fs::write(
+        crate::flow::flow_dir(root).join(".gitignore"),
+        "# Which run you are working on — local to your checkout.\n/current\n",
+    )?;
 
     let path = flow_path(root);
     if path.exists() {
         println!("  kept {} (already yours)", rel(root, &path));
     } else {
-        std::fs::write(&path, contents)?;
+        std::fs::write(&path, &contents)?;
         println!("wrote {}", rel(root, &path));
     }
 
@@ -66,6 +91,23 @@ pub fn run(root: &Path, preset: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// A built-in name, or a path to a flow you wrote yourself.
+fn resolve_preset(chosen: &str) -> Result<String> {
+    if let Some((_, _, contents)) = PRESETS.iter().find(|(name, _, _)| *name == chosen) {
+        return Ok((*contents).to_string());
+    }
+    let path = Path::new(chosen);
+    if path.is_file() {
+        return std::fs::read_to_string(path)
+            .map_err(|e| anyhow!("could not read {}: {e}", path.display()));
+    }
+    let names: Vec<&str> = PRESETS.iter().map(|(n, _, _)| *n).collect();
+    Err(anyhow!(
+        "no preset or file called `{chosen}` — built-in presets: {}. See `flow presets`.",
+        names.join(", ")
+    ))
 }
 
 /// Replace the delimited flow block in place, or append one. Everything outside

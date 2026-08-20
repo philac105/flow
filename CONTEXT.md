@@ -23,8 +23,9 @@ Flow stores it and prints it; Flow never executes it.
 _Avoid_: action, script, hook
 
 **Preset**:
-A Flow definition shipped inside the binary. `flow init` writes a Preset out to
-`.flow/flow.toml`, after which the repo owns it and the Preset is irrelevant.
+A Flow definition shipped inside the binary, or a file someone wrote. `flow
+init` writes a Preset out to `.flow/flow.toml`, after which the repo owns it and
+the Preset is irrelevant.
 _Avoid_: template, default, built-in
 
 ### The work
@@ -38,6 +39,11 @@ Free text on a Run describing what sort of work it is — `feature`, `bug`,
 `task`, `project`. Flow never branches on it; it exists for the human reading
 the board.
 _Avoid_: type, category, label
+
+**Current**:
+The Run that bare commands act on, like a checked-out branch. Set by starting a
+Run or by `flow switch`, and local to a checkout rather than committed.
+_Avoid_: active, selected, focused
 
 **Artifact**:
 The file or tracker reference a Stage is expected to produce. Its existence on

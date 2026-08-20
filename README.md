@@ -83,7 +83,8 @@ The crate is `runflow`; the binary it installs is `flow`.
 
 ```bash
 flow init                      # write the flow and the agent adapter into this repo
-flow start "Auth rework" --kind feature
+flow start "Auth rework" --kind feature   # and it becomes current
+flow switch billing-fix        # change what bare commands act on
 flow next                      # what to do now, and the command for it
 flow go                        # hand the stage to your agent, prompt included
 flow config                    # where settings live, and what resolved from where
@@ -119,6 +120,43 @@ setting, and works before any repo is set up.
 A repo can override an agent by name when it genuinely needs to — the preset
 never does.
 
+## Which run bare commands act on
+
+`flow next`, `flow go` and `flow done` with no run named act on the **current**
+run — the one you switched to, like a checked-out branch. `flow start` makes the
+new run current, `flow switch` moves the pointer, and `flow status` marks it
+with a `*`:
+
+```
+  RUN          KIND     STAGE      DONE
+* auth-rework  feature  implement  3/5
+  billing-fix  bug      spec       1/5
+```
+
+Naming a run always wins over the pointer. If several runs are active and none
+is current, flow refuses rather than picking — guessing wrong on `flow done`
+would write a lie into the file a later session trusts.
+
+The pointer is local to your checkout, kept out of the repo by a `.gitignore`
+inside `.flow/`.
+
+## Pick a flow, or write one
+
+```bash
+flow presets                      # what ships in the binary
+flow init --preset bugfix
+flow init --preset ./mine.toml    # one you wrote
+```
+
+| | |
+|---|---|
+| `main-flow` | grill → spec → tickets → implement → review. Uses an issue tracker. |
+| `minimal` | shape → build → check. Three stages, nothing to install. |
+| `bugfix` | reproduce → diagnose → fix → verify. Prove it is broken before touching it. |
+
+`main-flow` is what a bare `flow init` writes; set `preset = "minimal"` in your
+user config to change that everywhere.
+
 ## The flow is yours
 
 `flow init` writes `.flow/flow.toml` into your repo and then forgets about it.
@@ -138,10 +176,11 @@ repeatable = false
 should leave behind — a path (with `{slug}` standing in for the run) gets
 checked on disk; a `tracker:` value is recorded and never checked.
 
-The shipped preset mirrors [Matt Pocock's main flow](https://www.aihero.dev/)
+The default preset mirrors [Matt Pocock's main flow](https://www.aihero.dev/)
 — grill, spec, tickets, implement, review — because that is the flow this was
-built and tested against. Delete stages, rename them, point them at your own
-commands.
+built and tested against. It is a starting point, not the tool's opinion: delete
+stages, rename them, point them at your own commands, or start from `minimal`
+and add stages when you miss them.
 
 ## Drift
 

@@ -5,7 +5,7 @@ kind = "project"
 flow = "main-flow"
 status = "active"
 created = "2026-08-20T22:35:18.891Z"
-updated = "2026-08-20T23:24:38.387Z"
+updated = "2026-08-20T23:34:35.862Z"
 
 [[stage]]
 name = "grill"
@@ -32,8 +32,8 @@ completed = "2026-08-20T22:35:18.900Z"
 name = "implement"
 status = "done"
 artifact = "tracker:https://github.com/philac105/flow/issues/2-10"
-started = "2026-08-20T23:24:38.386Z"
-completed = "2026-08-20T23:24:38.387Z"
+started = "2026-08-20T23:34:35.860Z"
+completed = "2026-08-20T23:34:35.862Z"
 
 [[stage]]
 name = "review"
@@ -45,7 +45,7 @@ started = "2026-08-20T22:39:08.121Z"
 
 `implement` done → `review`
 
-Added `flow go`: builds a prompt from the stage command, the run, the handoff and the exact `flow done` line, then launches the agent declared in flow.toml. ADR-0001 amended by ADR-0006 — the binary still names no agent; the launcher is config. Launching is a separate command from `flow next` because the adapter tells agents to call next, and a next that spawned sessions would fork forever. guard_env is the backstop. 59 tests.
+Added `flow switch` and a current-run pointer at .flow/current (gitignored, local to a checkout) — bare commands follow it rather than guessing, and refuse when several runs are active with none current. Shipped three presets instead of one: main-flow, minimal, bugfix; --preset also accepts a path to your own .toml, and `preset =` in the user config changes what a bare `flow init` writes. 82 tests.
 
 ## Log
 
@@ -78,3 +78,11 @@ Reopened: adding `flow go`, which hands a stage to an agent with the prompt asse
 ### 2026-08-20T23:24:38Z — `implement` done → `review`
 
 Added `flow go`: builds a prompt from the stage command, the run, the handoff and the exact `flow done` line, then launches the agent declared in flow.toml. ADR-0001 amended by ADR-0006 — the binary still names no agent; the launcher is config. Launching is a separate command from `flow next` because the adapter tells agents to call next, and a next that spawned sessions would fork forever. guard_env is the backstop. 59 tests.
+
+### 2026-08-20T23:34:35Z — sent back to `implement`
+
+Reopened: adding a current-run pointer and more than one preset.
+
+### 2026-08-20T23:34:35Z — `implement` done → `review`
+
+Added `flow switch` and a current-run pointer at .flow/current (gitignored, local to a checkout) — bare commands follow it rather than guessing, and refuse when several runs are active with none current. Shipped three presets instead of one: main-flow, minimal, bugfix; --preset also accepts a path to your own .toml, and `preset =` in the user config changes what a bare `flow init` writes. 82 tests.

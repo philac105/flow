@@ -12,6 +12,9 @@
 
 agent = "claude"
 
+# Which built-in flow a bare `flow init` writes. See `flow presets`.
+# preset = "main-flow"
+
 [agents.claude]
 # {prompt} is replaced with the assembled stage prompt. {slug} and {stage} work too.
 command = ["claude", "{prompt}"]

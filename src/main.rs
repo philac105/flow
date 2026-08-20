@@ -27,10 +27,12 @@ struct Cli {
 enum Command {
     /// Write a flow and the agent adapter into this repo
     Init {
-        /// Which built-in flow to write out. It becomes yours — edit it freely.
-        #[arg(long, default_value = "main-flow")]
-        preset: String,
+        /// A built-in flow, or a path to one of your own. It becomes yours.
+        #[arg(long)]
+        preset: Option<String>,
     },
+    /// List the flows that ship in the binary
+    Presets,
     /// Begin a new run through the flow
     Start {
         title: String,
@@ -38,6 +40,8 @@ enum Command {
         #[arg(long, default_value = "")]
         kind: String,
     },
+    /// Choose the run that bare commands act on
+    Switch { slug: String },
     /// The board: every run and where it stands
     Status {
         /// Include finished runs
@@ -133,12 +137,13 @@ fn run() -> Result<()> {
     // `.flow`, so the commands work from anywhere inside the repo.
     let root = match cli.command {
         Command::Init { .. } => cwd,
-        Command::Config { .. } => flow::find_root(&cwd),
+        Command::Config { .. } | Command::Presets => flow::find_root(&cwd),
         _ => flow::find_root(&cwd),
     };
 
     match cli.command {
-        Command::Init { preset } => commands::init::run(&root, &preset),
+        Command::Init { preset } => commands::init::run(&root, preset.as_deref()),
+        Command::Presets => commands::config::presets(),
         Command::Config { init } => {
             if init {
                 commands::config::init()
@@ -154,6 +159,7 @@ fn run() -> Result<()> {
         Command::Reopen { slug, message } => {
             commands::lifecycle::reopen(&root, slug.as_deref(), message.as_deref())
         }
+        Command::Switch { slug } => commands::lifecycle::switch(&root, &slug),
         Command::Status { all } => commands::view::status(&root, all),
         Command::Board { output, all } => commands::view::board(&root, output, all),
         Command::Go { slug, agent, print } => {

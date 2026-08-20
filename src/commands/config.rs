@@ -67,6 +67,25 @@ pub fn show(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// List the flows that ship in the binary.
+pub fn presets() -> Result<()> {
+    let (user, _) = crate::config::UserConfig::load()?;
+    let default = if user.preset.is_empty() {
+        super::init::PRESETS[0].0
+    } else {
+        user.preset.as_str()
+    };
+    println!(
+        "Built-in flows. `flow init --preset <name>`, or pass a path to a .toml of your own.\n"
+    );
+    for (name, description, _) in super::init::PRESETS {
+        let mark = if *name == default { "*" } else { " " };
+        println!("  {mark} {name:<12}{description}");
+    }
+    println!("\n* is what a bare `flow init` writes. Change it with `preset = \"<name>\"` in your user config.");
+    Ok(())
+}
+
 /// Write the starter user config, never clobbering one that exists.
 pub fn init() -> Result<()> {
     let path = user_config_path()

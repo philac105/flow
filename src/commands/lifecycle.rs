@@ -31,8 +31,11 @@ pub fn start(root: &Path, title: &str, kind: &str) -> Result<()> {
         )),
     );
     run.save()?;
+    // Starting something is the clearest possible statement of what you are
+    // working on, so it becomes current.
+    run::set_current(root, &slug)?;
 
-    println!("started `{slug}`\n");
+    println!("started `{slug}` (now current)\n");
     print_next(&flow, &run, None);
     Ok(())
 }
@@ -98,6 +101,15 @@ pub fn finish(root: &Path, slug: Option<&str>, message: Option<&str>) -> Result<
     run.record("Run finished.", message);
     run.save()?;
     println!("finished `{}`", run.meta.slug);
+    Ok(())
+}
+
+pub fn switch(root: &Path, slug: &str) -> Result<()> {
+    let flow = Flow::load(root)?;
+    let run = run::resolve(root, Some(slug))?;
+    run::set_current(root, &run.meta.slug)?;
+    println!("switched to `{}`\n", run.meta.slug);
+    print_next(&flow, &run, None);
     Ok(())
 }
 

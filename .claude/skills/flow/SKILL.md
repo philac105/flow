@@ -20,9 +20,12 @@ at a terminal. `flow` guards against this, but do not lean on the guard.
 Start every session on this repo by orienting:
 
 ```bash
-flow status      # every run and the stage it's on
+flow status      # every run and the stage it's on; * marks the current one
 flow next        # the current run's stage, and the command to run
 ```
+
+Bare commands act on the **current** run. If flow says several are active and
+none is current, ask the user which they mean rather than picking one.
 
 `flow next` prints a `## Where we are` handoff written by whoever worked last.
 Read it before touching the codebase — it is there so you do not have to

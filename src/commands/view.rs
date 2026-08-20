@@ -17,6 +17,7 @@ pub fn status(root: &Path, all: bool) -> Result<()> {
         return Ok(());
     }
 
+    let current = run::read_current(root);
     let rows: Vec<[String; 4]> = runs
         .iter()
         .map(|r| {
@@ -27,7 +28,15 @@ pub fn status(root: &Path, all: bool) -> Result<()> {
                 r.current_stage_name().unwrap_or("—").to_string()
             };
             [
-                r.meta.slug.clone(),
+                format!(
+                    "{}{}",
+                    if current.as_deref() == Some(r.meta.slug.as_str()) && !r.is_finished() {
+                        "* "
+                    } else {
+                        "  "
+                    },
+                    r.meta.slug
+                ),
                 if r.meta.kind.is_empty() {
                     "—".into()
                 } else {
@@ -39,7 +48,7 @@ pub fn status(root: &Path, all: bool) -> Result<()> {
         })
         .collect();
 
-    let headers = ["RUN", "KIND", "STAGE", "DONE"];
+    let headers = ["  RUN", "KIND", "STAGE", "DONE"];
     let widths: Vec<usize> = (0..4)
         .map(|i| {
             rows.iter()
