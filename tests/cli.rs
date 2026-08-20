@@ -842,3 +842,165 @@ fn a_stage_can_override_its_command_per_agent() {
     // An agent with no override falls back to the one command.
     assert!(stdout(flow(dir.path()).args(["next", "--agent", "cursor"])).contains("/to-spec"));
 }
+
+// --- handing a stage to an agent -------------------------------------------
+
+/// A stand-in for a real agent: it records the prompt it was given and exits.
+/// `sh -c '<script>' <arg>` binds the first argument to `$0`.
+fn with_fake_agent(dir: &Path, script: &str) {
+    let flow_toml = read(dir, ".flow/flow.toml");
+    let replaced = flow_toml.replace(
+        "command = [\"claude\", \"{prompt}\"]",
+        &format!("command = [\"sh\", \"-c\", \"{script}\", \"{{prompt}}\"]"),
+    );
+    assert_ne!(flow_toml, replaced, "launcher line not found in the preset");
+    std::fs::write(dir.join(".flow/flow.toml"), replaced).unwrap();
+}
+
+#[test]
+fn go_launches_the_configured_agent_with_the_assembled_prompt() {
+    let dir = repo_with_run();
+    with_fake_agent(dir.path(), "printf %s \\\"$0\\\" > prompt.txt");
+
+    flow(dir.path())
+        .arg("go")
+        .env_remove("CLAUDECODE")
+        .assert()
+        .success();
+
+    let prompt = read(dir.path(), "prompt.txt");
+    // The stage's command leads, so it reads as an instruction.
+    assert!(prompt.starts_with("/grill-with-docs"));
+    assert!(prompt.contains("auth-rework"));
+    assert!(prompt.contains("Stage 1 of 5"));
+    assert!(prompt.contains("grill"));
+    // And it carries the handoff and how to record.
+    assert!(prompt.contains("## Where we are"));
+    assert!(prompt.contains("flow done auth-rework -m"));
+    assert!(prompt.contains("--artifact .scratch/auth-rework/grill.md"));
+}
+
+#[test]
+fn go_carries_the_handoff_the_last_session_left() {
+    let dir = repo_with_run();
+    with_fake_agent(dir.path(), "printf %s \\\"$0\\\" > prompt.txt");
+    flow(dir.path())
+        .args(["done", "-m", "Tracker choice is still open."])
+        .assert()
+        .success();
+
+    flow(dir.path())
+        .arg("go")
+        .env_remove("CLAUDECODE")
+        .assert()
+        .success();
+
+    let prompt = read(dir.path(), "prompt.txt");
+    assert!(prompt.starts_with("/to-spec"));
+    assert!(prompt.contains("Tracker choice is still open."));
+}
+
+#[test]
+fn go_never_records_the_stage_itself() {
+    // An agent exiting cleanly means the session ended, not that the work is
+    // done. Recording on exit code would write lies into the file.
+    let dir = repo_with_run();
+    with_fake_agent(dir.path(), "true");
+    let before = read(dir.path(), ".flow/runs/auth-rework.md");
+
+    let out = stdout(flow(dir.path()).arg("go").env_remove("CLAUDECODE"));
+
+    let after = read(dir.path(), ".flow/runs/auth-rework.md");
+    assert_eq!(
+        before.split("updated =").next(),
+        after.split("updated =").next(),
+        "go must not advance the run"
+    );
+    assert!(out.contains("still reads `grill`"));
+    assert!(out.contains("flow done"));
+}
+
+#[test]
+fn go_reports_an_artifact_that_appeared_while_the_agent_had_it() {
+    let dir = repo_with_run();
+    with_fake_agent(
+        dir.path(),
+        "mkdir -p .scratch/auth-rework; echo notes > .scratch/auth-rework/grill.md",
+    );
+
+    let out = stdout(flow(dir.path()).arg("go").env_remove("CLAUDECODE"));
+    assert!(
+        out.contains("grill.md"),
+        "should notice the new artifact:\n{out}"
+    );
+}
+
+#[test]
+fn go_refuses_to_nest_a_session_inside_a_session() {
+    let dir = repo_with_run();
+    with_fake_agent(dir.path(), "touch SHOULD_NOT_EXIST");
+
+    let out = stdout(flow(dir.path()).arg("go").env("CLAUDECODE", "1"));
+
+    assert!(
+        !dir.path().join("SHOULD_NOT_EXIST").exists(),
+        "must not launch"
+    );
+    assert!(out.contains("CLAUDECODE"));
+    // It still hands over the prompt, so the agent already running can act.
+    assert!(out.contains("/grill-with-docs"));
+}
+
+#[test]
+fn go_print_shows_the_prompt_and_launches_nothing() {
+    let dir = repo_with_run();
+    with_fake_agent(dir.path(), "touch SHOULD_NOT_EXIST");
+
+    let out = stdout(
+        flow(dir.path())
+            .args(["go", "--print"])
+            .env_remove("CLAUDECODE"),
+    );
+
+    assert!(!dir.path().join("SHOULD_NOT_EXIST").exists());
+    assert!(out.contains("/grill-with-docs"));
+    assert!(out.contains("flow done auth-rework"));
+}
+
+#[test]
+fn an_unknown_agent_names_the_ones_that_exist() {
+    let dir = repo_with_run();
+    flow(dir.path())
+        .args(["go", "--agent", "nonsense"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("claude"));
+}
+
+#[test]
+fn a_failing_agent_is_reported_rather_than_swallowed() {
+    let dir = repo_with_run();
+    with_fake_agent(dir.path(), "exit 3");
+
+    let out = stdout(flow(dir.path()).arg("go").env_remove("CLAUDECODE"));
+    assert!(out.contains("status 3"), "got:\n{out}");
+}
+
+#[test]
+fn go_picks_the_per_agent_command_override() {
+    let dir = TempDir::new().unwrap();
+    flow(dir.path()).arg("init").assert().success();
+    std::fs::write(
+        dir.path().join(".flow/flow.toml"),
+        "name = \"mine\"\nagent = \"codex\"\n\n\
+         [agents.codex]\ncommand = [\"sh\", \"-c\", \"printf %s \\\"$0\\\" > p.txt\", \"{prompt}\"]\n\n\
+         [[stage]]\nname = \"spec\"\ncommand = \"/to-spec\"\n\n\
+         [stage.agents]\ncodex = \"write the spec, codex-style\"\n",
+    )
+    .unwrap();
+    flow(dir.path()).args(["start", "Thing"]).assert().success();
+
+    flow(dir.path()).arg("go").assert().success();
+
+    assert!(read(dir.path(), "p.txt").starts_with("write the spec, codex-style"));
+}

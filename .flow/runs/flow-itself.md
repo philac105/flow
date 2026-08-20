@@ -5,7 +5,7 @@ kind = "project"
 flow = "main-flow"
 status = "active"
 created = "2026-08-20T22:35:18.891Z"
-updated = "2026-08-20T22:39:08.121Z"
+updated = "2026-08-20T23:24:38.387Z"
 
 [[stage]]
 name = "grill"
@@ -32,8 +32,8 @@ completed = "2026-08-20T22:35:18.900Z"
 name = "implement"
 status = "done"
 artifact = "tracker:https://github.com/philac105/flow/issues/2-10"
-started = "2026-08-20T22:35:18.900Z"
-completed = "2026-08-20T22:39:08.121Z"
+started = "2026-08-20T23:24:38.386Z"
+completed = "2026-08-20T23:24:38.387Z"
 
 [[stage]]
 name = "review"
@@ -45,7 +45,7 @@ started = "2026-08-20T22:39:08.121Z"
 
 `implement` done → `review`
 
-Built and installed. 50 integration tests through one seam (the CLI), clippy and fmt clean. Reviewing the diff found four real defects, all fixed: flow back fabricated a dead session on every deliberate redo; a finished run was unreachable without naming it; second-resolution timestamps made status ordering arbitrary; and a handoff quoting '## Log' could swallow the log. Added flow reopen — back only moves backwards, so a run finished at its first stage had no way home.
+Added `flow go`: builds a prompt from the stage command, the run, the handoff and the exact `flow done` line, then launches the agent declared in flow.toml. ADR-0001 amended by ADR-0006 — the binary still names no agent; the launcher is config. Launching is a separate command from `flow next` because the adapter tells agents to call next, and a next that spawned sessions would fork forever. guard_env is the backstop. 59 tests.
 
 ## Log
 
@@ -70,3 +70,11 @@ Nine vertical slices published as issues #2-#10, with native GitHub blocking edg
 ### 2026-08-20T22:39:08Z — `implement` done → `review`
 
 Built and installed. 50 integration tests through one seam (the CLI), clippy and fmt clean. Reviewing the diff found four real defects, all fixed: flow back fabricated a dead session on every deliberate redo; a finished run was unreachable without naming it; second-resolution timestamps made status ordering arbitrary; and a handoff quoting '## Log' could swallow the log. Added flow reopen — back only moves backwards, so a run finished at its first stage had no way home.
+
+### 2026-08-20T23:24:38Z — sent back to `implement`
+
+Reopened: adding `flow go`, which hands a stage to an agent with the prompt assembled.
+
+### 2026-08-20T23:24:38Z — `implement` done → `review`
+
+Added `flow go`: builds a prompt from the stage command, the run, the handoff and the exact `flow done` line, then launches the agent declared in flow.toml. ADR-0001 amended by ADR-0006 — the binary still names no agent; the launcher is config. Launching is a separate command from `flow next` because the adapter tells agents to call next, and a next that spawned sessions would fork forever. guard_env is the backstop. 59 tests.

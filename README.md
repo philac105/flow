@@ -32,12 +32,39 @@ Nine tickets published, #2-#10, with blocking edges. Start at #2 — it carries
 the test harness everything else uses. The tracker choice is still open.
 ```
 
-## It does not run anything
+## Hand a stage straight to an agent
 
-`flow` prints the command a stage declares. It never executes it. That one
-restriction is what makes it work with any agent and any set of skills — the
-binary never learns what Claude Code is, and adding support for another agent is
-a file, not a code path.
+```bash
+flow go
+```
+
+opens your agent on the current stage, with the prompt already built — the
+stage's command, who the run is, the handoff the last session left, and the
+exact `flow done` line to record it with. No copy-paste, no re-explaining.
+
+The launcher is declared in your `flow.toml`, not compiled in:
+
+```toml
+agent = "claude"
+
+[agents.claude]
+command = ["claude", "{prompt}"]
+guard_env = ["CLAUDECODE"]
+```
+
+`flow` substitutes and spawns; it never learns what is on the other end, so
+another agent is a table in a config file rather than a code path.
+
+`flow go` will not record the stage for you. An agent exiting cleanly means the
+session ended, not that the work is done — and a wrong entry in the one file a
+later session trusts is worse than no entry. It tells you what changed and
+leaves `flow done` to you.
+
+**`flow next` still runs nothing.** It prints. That is what agents call, and why
+launching is a separate command: the adapter tells an agent to run `flow next`,
+so if that spawned a session, an agent following its instructions would fork
+sessions forever. `guard_env` is the backstop — inside a session, `flow go`
+prints the prompt instead of spawning.
 
 ## Install
 
@@ -53,6 +80,7 @@ The crate is `runflow`; the binary it installs is `flow`.
 flow init                      # write the flow and the agent adapter into this repo
 flow start "Auth rework" --kind feature
 flow next                      # what to do now, and the command for it
+flow go                        # hand the stage to your agent, prompt included
 flow done -m "<handoff>"       # record it and advance
 flow status                    # the board
 flow board                     # the board as a standalone HTML file

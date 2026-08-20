@@ -64,6 +64,11 @@ Artifact is missing. Drift is how a session that died mid-Stage announces
 itself.
 _Avoid_: desync, inconsistency, staleness
 
+**Launcher**:
+The argv a flow declares for starting an agent, with `{prompt}` substituted.
+Flow spawns it without knowing what is on the other end.
+_Avoid_: runner, executor, agent command
+
 **Adapter**:
 The per-agent file that teaches an agent the Flow protocol — a skill for Claude
 Code, a section of `AGENTS.md` for others. Written by `flow init`. The only

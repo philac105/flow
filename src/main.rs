@@ -52,6 +52,16 @@ enum Command {
         #[arg(long)]
         agent: Option<String>,
     },
+    /// Hand the current stage to an agent, with the prompt already assembled
+    Go {
+        slug: Option<String>,
+        /// Which configured agent to launch
+        #[arg(long)]
+        agent: Option<String>,
+        /// Show the prompt instead of launching anything
+        #[arg(long)]
+        print: bool,
+    },
     /// Mark the current stage complete and move to the next
     Done {
         slug: Option<String>,
@@ -131,6 +141,9 @@ fn run() -> Result<()> {
         }
         Command::Status { all } => commands::view::status(&root, all),
         Command::Board { output, all } => commands::view::board(&root, output, all),
+        Command::Go { slug, agent, print } => {
+            commands::agent::go(&root, slug.as_deref(), agent.as_deref(), print)
+        }
         Command::Next { slug, agent } => {
             commands::transitions::next(&root, slug.as_deref(), agent.as_deref())
         }

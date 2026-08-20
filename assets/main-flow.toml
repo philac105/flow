@@ -1,7 +1,8 @@
 # The flow this repo follows. This file is yours — edit it.
 #
-# `flow` never executes a stage's `command`; it prints it and records that the
-# stage happened. Stages run in the order they appear here.
+# `flow next` prints a stage's `command` and never runs it. `flow go` hands it
+# to the agent configured below, with the prompt already assembled. Stages run
+# in the order they appear here.
 #
 #   name        identifier used on the command line
 #   description what this stage is for, shown by `flow next`
@@ -15,6 +16,21 @@
 
 name = "main-flow"
 description = "The idea → ship spine, in order."
+
+# Which agent `flow go` hands a stage to. Nothing else in flow knows or cares
+# what is on the other end of this — it substitutes and spawns.
+#
+#   command    argv to run. {prompt}, {slug} and {stage} are substituted.
+#   guard_env  variables whose presence means an agent is already running here,
+#              so `flow go` refuses rather than nesting a session in a session.
+agent = "claude"
+
+[agents.claude]
+command = ["claude", "{prompt}"]
+guard_env = ["CLAUDECODE"]
+
+# [agents.codex]
+# command = ["codex", "{prompt}"]
 
 [[stage]]
 name = "grill"

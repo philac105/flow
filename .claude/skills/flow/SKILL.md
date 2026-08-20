@@ -9,7 +9,11 @@ This repo tracks work with `flow`, a CLI that keeps each run's position in files
 under `.flow/`. The files are the source of truth, not this conversation — so a
 session ending costs nothing.
 
-**`flow` never runs anything itself.** It tells you the command; you run it.
+**`flow next` never runs anything.** It tells you the command; you run it.
+
+**Never run `flow go`.** That command launches a *new* agent session, and you
+are already one — running it would fork sessions without end. It is for a human
+at a terminal. `flow` guards against this, but do not lean on the guard.
 
 ## Resuming
 
