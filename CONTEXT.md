@@ -65,8 +65,9 @@ itself.
 _Avoid_: desync, inconsistency, staleness
 
 **Launcher**:
-The argv a flow declares for starting an agent, with `{prompt}` substituted.
-Flow spawns it without knowing what is on the other end.
+The argv that starts an agent, with `{prompt}` substituted. Declared in the
+user's config, because which agent someone drives is theirs and not the
+project's. Flow spawns it without knowing what is on the other end.
 _Avoid_: runner, executor, agent command
 
 **Adapter**:

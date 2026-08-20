@@ -34,40 +34,6 @@ pub struct Launcher {
     pub guard_env: Vec<String>,
 }
 
-impl Flow {
-    /// Resolve a launcher by name, falling back to the flow's default and then
-    /// to the only one declared.
-    pub fn launcher(&self, name: Option<&str>) -> Result<(&str, &Launcher)> {
-        let chosen = name
-            .map(str::to_string)
-            .or_else(|| (!self.agent.is_empty()).then(|| self.agent.clone()))
-            .or_else(|| {
-                (self.agents.len() == 1).then(|| self.agents.keys().next().unwrap().clone())
-            });
-
-        let Some(chosen) = chosen else {
-            return Err(anyhow!(
-                "no agent configured — add an [agents.<name>] table to .flow/flow.toml"
-            ));
-        };
-        match self.agents.get_key_value(chosen.as_str()) {
-            Some((name, launcher)) if !launcher.command.is_empty() => Ok((name.as_str(), launcher)),
-            Some((name, _)) => Err(anyhow!("agent `{name}` declares an empty command")),
-            None => {
-                let known: Vec<&str> = self.agents.keys().map(String::as_str).collect();
-                Err(anyhow!(
-                    "no agent called `{chosen}` — .flow/flow.toml declares: {}",
-                    if known.is_empty() {
-                        "none".into()
-                    } else {
-                        known.join(", ")
-                    }
-                ))
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Stage {
     pub name: String,

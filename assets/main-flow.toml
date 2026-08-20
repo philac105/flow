@@ -17,20 +17,10 @@
 name = "main-flow"
 description = "The idea → ship spine, in order."
 
-# Which agent `flow go` hands a stage to. Nothing else in flow knows or cares
-# what is on the other end of this — it substitutes and spawns.
-#
-#   command    argv to run. {prompt}, {slug} and {stage} are substituted.
-#   guard_env  variables whose presence means an agent is already running here,
-#              so `flow go` refuses rather than nesting a session in a session.
-agent = "claude"
-
-[agents.claude]
-command = ["claude", "{prompt}"]
-guard_env = ["CLAUDECODE"]
-
-# [agents.codex]
-# command = ["codex", "{prompt}"]
+# This file is the project's process, and is meant to be committed. Which agent
+# you drive it with is yours, and lives in your user config instead — run
+# `flow config` to see where. A repo can override with an [agents.<name>] table
+# here, but most never need to.
 
 [[stage]]
 name = "grill"

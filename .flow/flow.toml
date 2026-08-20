@@ -16,12 +16,6 @@
 name = "main-flow"
 description = "The idea → ship spine, in order."
 
-agent = "claude"
-
-[agents.claude]
-command = ["claude", "{prompt}"]
-guard_env = ["CLAUDECODE"]
-
 [[stage]]
 name = "grill"
 description = "Interview until the plan is sharp. Produces decisions, a glossary and ADRs."

@@ -13,6 +13,8 @@ use tempfile::TempDir;
 fn flow(dir: &Path) -> Command {
     let mut cmd = Command::cargo_bin("flow").unwrap();
     cmd.arg("--root").arg(dir);
+    // Isolate user config per test: nothing here may read the real ~/.config.
+    cmd.env("XDG_CONFIG_HOME", dir.join("xdg"));
     cmd
 }
 
@@ -845,16 +847,32 @@ fn a_stage_can_override_its_command_per_agent() {
 
 // --- handing a stage to an agent -------------------------------------------
 
-/// A stand-in for a real agent: it records the prompt it was given and exits.
-/// `sh -c '<script>' <arg>` binds the first argument to `$0`.
+/// A stand-in for a real agent, configured where a real one goes — the user's
+/// config. `sh -c '<script>' <arg>` binds the first argument to `$0`.
 fn with_fake_agent(dir: &Path, script: &str) {
-    let flow_toml = read(dir, ".flow/flow.toml");
-    let replaced = flow_toml.replace(
-        "command = [\"claude\", \"{prompt}\"]",
-        &format!("command = [\"sh\", \"-c\", \"{script}\", \"{{prompt}}\"]"),
+    let path = dir.join("xdg/flow/config.toml");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &path,
+        format!(
+            "agent = \"test\"\n\n[agents.test]\ncommand = [\"sh\", \"-c\", \"{script}\", \"{{prompt}}\"]\nguard_env = [\"CLAUDECODE\"]\n"
+        ),
+    )
+    .unwrap();
+}
+
+/// A repo overriding the launcher by name. Scalars must precede the stage
+/// tables, so this goes at the top of the file.
+fn with_repo_agent(dir: &Path, script: &str) {
+    let existing = read(dir, ".flow/flow.toml");
+    let block = format!(
+        "agent = \"test\"\n\n[agents.test]\ncommand = [\"sh\", \"-c\", \"{script}\", \"{{prompt}}\"]\n\n"
     );
-    assert_ne!(flow_toml, replaced, "launcher line not found in the preset");
-    std::fs::write(dir.join(".flow/flow.toml"), replaced).unwrap();
+    // Once a table opens, every later bare key belongs to it — so this goes
+    // after the top-level scalars and before the first stage.
+    let at = existing.find("[[stage]]").expect("preset has stages");
+    let merged = format!("{}{block}{}", &existing[..at], &existing[at..]);
+    std::fs::write(dir.join(".flow/flow.toml"), merged).unwrap();
 }
 
 #[test]
@@ -970,11 +988,12 @@ fn go_print_shows_the_prompt_and_launches_nothing() {
 #[test]
 fn an_unknown_agent_names_the_ones_that_exist() {
     let dir = repo_with_run();
+    with_fake_agent(dir.path(), "true");
     flow(dir.path())
         .args(["go", "--agent", "nonsense"])
         .assert()
         .failure()
-        .stderr(predicates::str::contains("claude"));
+        .stderr(predicates::str::contains("test"));
 }
 
 #[test]
@@ -1003,4 +1022,139 @@ fn go_picks_the_per_agent_command_override() {
     flow(dir.path()).arg("go").assert().success();
 
     assert!(read(dir.path(), "p.txt").starts_with("write the spec, codex-style"));
+}
+
+// --- where settings live ---------------------------------------------------
+
+#[test]
+fn the_committed_flow_carries_no_agent_of_its_own() {
+    // Committing a flow shares the process, not the author's tooling.
+    let dir = repo();
+    let toml = read(dir.path(), ".flow/flow.toml");
+    assert!(
+        !toml
+            .lines()
+            .any(|l| l.starts_with("[agents.") || l.starts_with("agent =")),
+        "the preset must not ship a launcher:\n{toml}"
+    );
+}
+
+#[test]
+fn the_user_config_supplies_the_agent() {
+    let dir = repo_with_run();
+    with_fake_agent(dir.path(), "printf %s \\\"$0\\\" > prompt.txt");
+
+    flow(dir.path())
+        .arg("go")
+        .env_remove("CLAUDECODE")
+        .assert()
+        .success();
+
+    assert!(read(dir.path(), "prompt.txt").starts_with("/grill-with-docs"));
+}
+
+#[test]
+fn a_repo_may_override_the_users_agent_by_name() {
+    let dir = repo_with_run();
+    with_fake_agent(dir.path(), "printf user > which.txt");
+    with_repo_agent(dir.path(), "printf repo > which.txt");
+
+    flow(dir.path())
+        .arg("go")
+        .env_remove("CLAUDECODE")
+        .assert()
+        .success();
+
+    assert_eq!(read(dir.path(), "which.txt"), "repo");
+}
+
+#[test]
+fn go_with_nothing_configured_points_at_the_setup_command() {
+    let dir = repo_with_run();
+    flow(dir.path())
+        .arg("go")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("flow config --init"));
+}
+
+#[test]
+fn config_names_both_files_and_where_each_setting_came_from() {
+    let dir = repo_with_run();
+    with_fake_agent(dir.path(), "true");
+
+    let out = stdout(flow(dir.path()).arg("config"));
+
+    // It must answer "where do I set this up" with actual paths.
+    assert!(
+        out.contains("xdg/flow/config.toml"),
+        "no user path in:\n{out}"
+    );
+    assert!(out.contains(".flow/flow.toml"), "no repo path in:\n{out}");
+    assert!(out.contains("test"));
+    assert!(out.contains("user config"));
+}
+
+#[test]
+fn config_says_so_when_the_user_config_is_missing() {
+    let dir = repo();
+    let out = stdout(flow(dir.path()).arg("config"));
+    assert!(out.contains("does not exist"));
+    assert!(out.contains("flow config --init"));
+}
+
+#[test]
+fn config_init_writes_the_starter_and_never_clobbers_it() {
+    let dir = repo();
+    flow(dir.path())
+        .args(["config", "--init"])
+        .assert()
+        .success();
+
+    let path = dir.path().join("xdg/flow/config.toml");
+    assert!(path.is_file());
+    let starter = std::fs::read_to_string(&path).unwrap();
+    assert!(starter.contains("[agents.claude]"));
+    assert!(starter.contains("guard_env"));
+
+    std::fs::write(&path, "agent = \"mine\"\n").unwrap();
+    flow(dir.path())
+        .args(["config", "--init"])
+        .assert()
+        .success();
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "agent = \"mine\"\n"
+    );
+}
+
+#[test]
+fn config_works_outside_a_flow_repo() {
+    // Answering "where do I set this up" must not require a repo to be set up.
+    let dir = TempDir::new().unwrap();
+    let out = stdout(flow(dir.path()).arg("config"));
+    assert!(out.contains("flow init"));
+}
+
+#[test]
+fn a_malformed_flow_says_so_instead_of_reading_as_absent() {
+    let dir = repo();
+    std::fs::write(
+        dir.path().join(".flow/flow.toml"),
+        "[agents.x]\nname = \"oops\"\n",
+    )
+    .unwrap();
+
+    flow(dir.path())
+        .arg("config")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("flow.toml"));
+}
+
+#[test]
+fn init_points_a_new_user_at_the_setup_command() {
+    let dir = TempDir::new().unwrap();
+    let out = stdout(flow(dir.path()).arg("init"));
+    assert!(out.contains("flow config --init"), "got:\n{out}");
 }

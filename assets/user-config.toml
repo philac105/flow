@@ -1,0 +1,24 @@
+# flow — your settings.
+#
+# This file is yours and this machine's: which agent you drive, and how it
+# starts. It is deliberately not in any repo, so committing a flow shares the
+# process without shipping your tooling to everyone who clones it.
+#
+# What lives where:
+#   here                 which agent you use, and how to launch it
+#   <repo>/.flow/flow.toml   which stages exist — the project's process, committed
+#
+# A repo can override an agent by name if it genuinely needs to. Most never do.
+
+agent = "claude"
+
+[agents.claude]
+# {prompt} is replaced with the assembled stage prompt. {slug} and {stage} work too.
+command = ["claude", "{prompt}"]
+# Variables whose presence means an agent is already running here. `flow go`
+# then prints the prompt instead of nesting a session inside a session.
+guard_env = ["CLAUDECODE"]
+
+# [agents.codex]
+# command = ["codex", "{prompt}"]
+# guard_env = ["CODEX_SANDBOX"]

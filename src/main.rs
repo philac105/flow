@@ -1,4 +1,5 @@
 mod commands;
+mod config;
 mod flow;
 mod run;
 
@@ -51,6 +52,12 @@ enum Command {
         /// Show a per-agent command override, when the stage declares one
         #[arg(long)]
         agent: Option<String>,
+    },
+    /// Show where settings live, and which file each one came from
+    Config {
+        /// Write the starter user config if it does not exist yet
+        #[arg(long)]
+        init: bool,
     },
     /// Hand the current stage to an agent, with the prompt already assembled
     Go {
@@ -126,11 +133,19 @@ fn run() -> Result<()> {
     // `.flow`, so the commands work from anywhere inside the repo.
     let root = match cli.command {
         Command::Init { .. } => cwd,
+        Command::Config { .. } => flow::find_root(&cwd),
         _ => flow::find_root(&cwd),
     };
 
     match cli.command {
         Command::Init { preset } => commands::init::run(&root, &preset),
+        Command::Config { init } => {
+            if init {
+                commands::config::init()
+            } else {
+                commands::config::show(&root)
+            }
+        }
         Command::Start { title, kind } => commands::lifecycle::start(&root, &title, &kind),
         Command::Show { slug } => commands::lifecycle::show(&root, slug.as_deref()),
         Command::Finish { slug, message } => {

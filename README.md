@@ -42,7 +42,12 @@ opens your agent on the current stage, with the prompt already built — the
 stage's command, who the run is, the handoff the last session left, and the
 exact `flow done` line to record it with. No copy-paste, no re-explaining.
 
-The launcher is declared in your `flow.toml`, not compiled in:
+Set the agent up once per machine:
+
+```bash
+flow config --init      # writes ~/.config/flow/config.toml
+flow config             # shows every path and where each setting came from
+```
 
 ```toml
 agent = "claude"
@@ -81,6 +86,7 @@ flow init                      # write the flow and the agent adapter into this 
 flow start "Auth rework" --kind feature
 flow next                      # what to do now, and the command for it
 flow go                        # hand the stage to your agent, prompt included
+flow config                    # where settings live, and what resolved from where
 flow done -m "<handoff>"       # record it and advance
 flow status                    # the board
 flow board                     # the board as a standalone HTML file
@@ -95,6 +101,23 @@ flow back --stage implement -m "review found a hole"
 flow finish -m "shipped"
 flow reopen -m "it came back"
 ```
+
+## Where settings live
+
+Two files, split by who owns the answer:
+
+| | |
+|---|---|
+| `<repo>/.flow/flow.toml` | **which stages exist** — the project's process. Committed and shared. |
+| `~/.config/flow/config.toml` | **which agent you drive, and how it starts** — yours and this machine's. Never in a repo. |
+
+That split is deliberate. A flow is worth committing so a team shares one
+process; your choice of agent is not, or everyone who clones the repo inherits
+your tooling. `flow config` prints both paths and the source of every resolved
+setting, and works before any repo is set up.
+
+A repo can override an agent by name when it genuinely needs to — the preset
+never does.
 
 ## The flow is yours
 

@@ -1,3 +1,4 @@
+use crate::config::Settings;
 use crate::flow::{Flow, Launcher};
 use crate::run::{self, Run};
 use anyhow::{anyhow, Result};
@@ -26,7 +27,8 @@ pub fn go(root: &Path, slug: Option<&str>, agent: Option<&str>, print_only: bool
         ));
     }
 
-    let (name, launcher) = flow.launcher(agent)?;
+    let settings = Settings::resolve(&flow, agent)?;
+    let (name, launcher) = settings.launcher()?;
     let stage = &flow.stages[index];
     let prompt = build_prompt(&flow, &run, index, Some(name));
 

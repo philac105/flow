@@ -1,3 +1,4 @@
+use crate::config::user_config_path;
 use crate::flow::{flow_path, runs_dir};
 use anyhow::{anyhow, Result};
 use std::path::Path;
@@ -57,6 +58,13 @@ pub fn run(root: &Path, preset: &str) -> Result<()> {
         "\nEdit {} to make the flow yours, then:\n  flow start \"<what you're building>\"",
         rel(root, &flow_path(root))
     );
+
+    // Which agent you drive is yours, not the repo's, and lives elsewhere.
+    if !user_config_path().is_some_and(|p| p.is_file()) {
+        println!(
+            "\nTo hand stages to an agent with `flow go`, set one up once per machine:\n               flow config --init"
+        );
+    }
     Ok(())
 }
 
