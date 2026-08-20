@@ -55,6 +55,7 @@ flow skip -m "..."               # pass over an optional stage
 flow back -m "..."               # review kicked the work back
 flow back --stage implement -m "..."
 flow finish -m "..."             # the run is complete
+flow reopen -m "..."             # a finished run turned out not to be
 flow start "<title>" --kind bug  # begin a new run
 ```
 

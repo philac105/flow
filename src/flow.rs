@@ -68,8 +68,8 @@ impl Flow {
                 path.display()
             )
         })?;
-        let flow: Flow = toml::from_str(&text)
-            .with_context(|| format!("could not parse {}", path.display()))?;
+        let flow: Flow =
+            toml::from_str(&text).with_context(|| format!("could not parse {}", path.display()))?;
         if flow.stages.is_empty() {
             return Err(anyhow!("{} declares no stages", path.display()));
         }

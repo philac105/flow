@@ -65,6 +65,7 @@ flow skip -m "one-liner, no spec needed"
 flow back -m "spec was wrong"
 flow back --stage implement -m "review found a hole"
 flow finish -m "shipped"
+flow reopen -m "it came back"
 ```
 
 ## The flow is yours

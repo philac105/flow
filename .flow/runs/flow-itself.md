@@ -5,7 +5,7 @@ kind = "project"
 flow = "main-flow"
 status = "active"
 created = "2026-08-20T22:35:18.891Z"
-updated = "2026-08-20T22:35:18.900Z"
+updated = "2026-08-20T22:39:08.121Z"
 
 [[stage]]
 name = "grill"
@@ -30,19 +30,22 @@ completed = "2026-08-20T22:35:18.900Z"
 
 [[stage]]
 name = "implement"
-status = "in_progress"
+status = "done"
+artifact = "tracker:https://github.com/philac105/flow/issues/2-10"
 started = "2026-08-20T22:35:18.900Z"
+completed = "2026-08-20T22:39:08.121Z"
 
 [[stage]]
 name = "review"
-status = "pending"
+status = "in_progress"
+started = "2026-08-20T22:39:08.121Z"
 +++
 
 ## Where we are
 
-`tickets` done → `implement`
+`implement` done → `review`
 
-Nine vertical slices published as issues #2-#10, with native GitHub blocking edges. Ticket 01 is the walking skeleton; 09 is this dogfood. Frontier order is 02 -> 03 -> (04, 05, 06) -> 07 -> 08 -> 09.
+Built and installed. 50 integration tests through one seam (the CLI), clippy and fmt clean. Reviewing the diff found four real defects, all fixed: flow back fabricated a dead session on every deliberate redo; a finished run was unreachable without naming it; second-resolution timestamps made status ordering arbitrary; and a handoff quoting '## Log' could swallow the log. Added flow reopen — back only moves backwards, so a run finished at its first stage had no way home.
 
 ## Log
 
@@ -63,3 +66,7 @@ Spec published as GitHub issue #1. One testing seam: the CLI surface, driven by 
 ### 2026-08-20T22:35:18Z — `tickets` done → `implement`
 
 Nine vertical slices published as issues #2-#10, with native GitHub blocking edges. Ticket 01 is the walking skeleton; 09 is this dogfood. Frontier order is 02 -> 03 -> (04, 05, 06) -> 07 -> 08 -> 09.
+
+### 2026-08-20T22:39:08Z — `implement` done → `review`
+
+Built and installed. 50 integration tests through one seam (the CLI), clippy and fmt clean. Reviewing the diff found four real defects, all fixed: flow back fabricated a dead session on every deliberate redo; a finished run was unreachable without naming it; second-resolution timestamps made status ordering arbitrary; and a handoff quoting '## Log' could swallow the log. Added flow reopen — back only moves backwards, so a run finished at its first stage had no way home.

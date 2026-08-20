@@ -31,12 +31,14 @@ pub fn done(
 ) -> Result<()> {
     let flow = Flow::load(root)?;
     let mut run = run::resolve(root, slug)?;
+    refuse_if_finished(&run)?;
     let index = current_or_err(&run)?;
 
     let stamp = now();
     {
         let record = &mut run.meta.stages[index];
         record.status = StageStatus::Done;
+        record.reopened = false;
         record.completed = Some(stamp.clone());
         if let Some(artifact) = artifact {
             record.artifact = Some(artifact.to_string());
@@ -59,6 +61,7 @@ pub fn done(
 pub fn skip(root: &Path, slug: Option<&str>, message: Option<&str>) -> Result<()> {
     let flow = Flow::load(root)?;
     let mut run = run::resolve(root, slug)?;
+    refuse_if_finished(&run)?;
     let index = current_or_err(&run)?;
     let name = run.meta.stages[index].name.clone();
 
@@ -78,6 +81,7 @@ pub fn skip(root: &Path, slug: Option<&str>, message: Option<&str>) -> Result<()
         let record = &mut run.meta.stages[index];
         record.status = StageStatus::Skipped;
         record.completed = Some(stamp.clone());
+        record.reopened = false;
     }
 
     let headline = match advance(&mut run, index, &stamp) {
@@ -100,6 +104,7 @@ pub fn back(
 ) -> Result<()> {
     let flow = Flow::load(root)?;
     let mut run = run::resolve(root, slug)?;
+    refuse_if_finished(&run)?;
 
     // Without a current stage the run has run off the end, so "back" means back
     // into the last stage there is.
@@ -127,6 +132,10 @@ pub fn back(
     // Everything from the target onwards is unsettled again. The log keeps the
     // record that it once wasn't.
     for record in run.meta.stages.iter_mut().skip(target) {
+        // A reopened stage's artifact legitimately still exists, so mark it as
+        // deliberately reopened rather than letting drift call it a dead session.
+        record.reopened = matches!(record.status, StageStatus::Done | StageStatus::Skipped)
+            || record.artifact.is_some();
         record.status = StageStatus::Pending;
         record.completed = None;
     }
@@ -142,6 +151,16 @@ pub fn back(
 
     println!("{headline}\n");
     print_next(&flow, &run, None);
+    Ok(())
+}
+
+fn refuse_if_finished(run: &Run) -> Result<()> {
+    if run.is_finished() {
+        return Err(anyhow!(
+            "`{}` is finished — bring it back with `flow reopen` before recording more",
+            run.meta.slug
+        ));
+    }
     Ok(())
 }
 

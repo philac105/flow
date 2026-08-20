@@ -77,6 +77,12 @@ enum Command {
         #[arg(short, long)]
         message: Option<String>,
     },
+    /// Bring a finished run back onto the board
+    Reopen {
+        slug: Option<String>,
+        #[arg(short, long)]
+        message: Option<String>,
+    },
     /// Mark a run finished so it drops off the board
     Finish {
         slug: Option<String>,
@@ -101,10 +107,10 @@ fn main() {
 
 fn run() -> Result<()> {
     let cli = Cli::parse();
-    let cwd = cli
-        .root
-        .clone()
-        .unwrap_or(std::env::current_dir()?);
+    let cwd = match cli.root.clone() {
+        Some(root) => root,
+        None => std::env::current_dir()?,
+    };
 
     // `init` writes where it is told; everything else searches upward for a
     // `.flow`, so the commands work from anywhere inside the repo.
@@ -119,6 +125,9 @@ fn run() -> Result<()> {
         Command::Show { slug } => commands::lifecycle::show(&root, slug.as_deref()),
         Command::Finish { slug, message } => {
             commands::lifecycle::finish(&root, slug.as_deref(), message.as_deref())
+        }
+        Command::Reopen { slug, message } => {
+            commands::lifecycle::reopen(&root, slug.as_deref(), message.as_deref())
         }
         Command::Status { all } => commands::view::status(&root, all),
         Command::Board { output, all } => commands::view::board(&root, output, all),

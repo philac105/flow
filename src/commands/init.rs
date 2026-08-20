@@ -87,4 +87,3 @@ fn rel(root: &Path, path: &Path) -> String {
         .display()
         .to_string()
 }
-

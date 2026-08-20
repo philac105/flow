@@ -7,7 +7,9 @@ pub fn start(root: &Path, title: &str, kind: &str) -> Result<()> {
     let flow = Flow::load(root)?;
     let slug = run::slugify(title);
     if slug.is_empty() {
-        return Err(anyhow!("`{title}` has no characters a slug can be made from"));
+        return Err(anyhow!(
+            "`{title}` has no characters a slug can be made from"
+        ));
     }
 
     let path = Run::path_for(root, &slug);
@@ -23,7 +25,10 @@ pub fn start(root: &Path, title: &str, kind: &str) -> Result<()> {
     let first = &flow.stages[0];
     run.record(
         &format!("Started. First stage is `{}`.", first.name),
-        Some(&format!("{}\n\nRun `{}` next.", first.description, first.command)),
+        Some(&format!(
+            "{}\n\nRun `{}` next.",
+            first.description, first.command
+        )),
     );
     run.save()?;
 
@@ -46,7 +51,11 @@ pub fn show(root: &Path, slug: Option<&str>) -> Result<()> {
     println!(
         "{kind} · flow `{}` · {done}/{total} stages · {}",
         run.meta.flow,
-        if run.is_finished() { "finished" } else { "active" }
+        if run.is_finished() {
+            "finished"
+        } else {
+            "active"
+        }
     );
     println!("updated {}\n", run.meta.updated);
 
@@ -89,6 +98,21 @@ pub fn finish(root: &Path, slug: Option<&str>, message: Option<&str>) -> Result<
     run.record("Run finished.", message);
     run.save()?;
     println!("finished `{}`", run.meta.slug);
+    Ok(())
+}
+
+pub fn reopen(root: &Path, slug: Option<&str>, message: Option<&str>) -> Result<()> {
+    let flow = Flow::load(root)?;
+    let mut run = run::resolve(root, slug)?;
+    if !run.is_finished() {
+        return Err(anyhow!("`{}` is already active", run.meta.slug));
+    }
+    run.meta.status = RunStatus::Active;
+    run.record("Reopened.", message);
+    run.save()?;
+
+    println!("reopened `{}`\n", run.meta.slug);
+    print_next(&flow, &run, None);
     Ok(())
 }
 

@@ -57,7 +57,10 @@ fn the_default_preset_has_the_five_main_flow_stages() {
     let dir = repo();
     let toml = read(dir.path(), ".flow/flow.toml");
     for stage in ["grill", "spec", "tickets", "implement", "review"] {
-        assert!(toml.contains(&format!("name = \"{stage}\"")), "missing {stage}");
+        assert!(
+            toml.contains(&format!("name = \"{stage}\"")),
+            "missing {stage}"
+        );
     }
     // Every stage must carry the fields `flow next` reports.
     assert!(toml.contains("description ="));
@@ -121,7 +124,10 @@ fn kind_is_free_text_and_optional() {
         .args(["start", "Odd job", "--kind", "spike/experiment"])
         .assert()
         .success();
-    flow(dir.path()).args(["start", "No kind"]).assert().success();
+    flow(dir.path())
+        .args(["start", "No kind"])
+        .assert()
+        .success();
 
     assert!(read(dir.path(), ".flow/runs/odd-job.md").contains("spike/experiment"));
     assert!(dir.path().join(".flow/runs/no-kind.md").is_file());
@@ -166,7 +172,10 @@ fn next_prints_the_stage_and_its_command_without_running_it() {
 #[test]
 fn done_advances_to_the_next_stage() {
     let dir = repo_with_run();
-    flow(dir.path()).args(["done", "-m", "Decisions settled."]).assert().success();
+    flow(dir.path())
+        .args(["done", "-m", "Decisions settled."])
+        .assert()
+        .success();
 
     let out = stdout(flow(dir.path()).arg("next"));
     assert!(out.contains("spec"));
@@ -176,8 +185,14 @@ fn done_advances_to_the_next_stage() {
 #[test]
 fn the_handoff_is_replaced_while_the_log_only_grows() {
     let dir = repo_with_run();
-    flow(dir.path()).args(["done", "-m", "FIRST NOTE"]).assert().success();
-    flow(dir.path()).args(["done", "-m", "SECOND NOTE"]).assert().success();
+    flow(dir.path())
+        .args(["done", "-m", "FIRST NOTE"])
+        .assert()
+        .success();
+    flow(dir.path())
+        .args(["done", "-m", "SECOND NOTE"])
+        .assert()
+        .success();
 
     let file = read(dir.path(), ".flow/runs/auth-rework.md");
     let (_, body) = file.split_once("## Where we are").unwrap();
@@ -197,7 +212,10 @@ fn the_handoff_is_replaced_while_the_log_only_grows() {
 #[test]
 fn log_entries_carry_the_stage_name() {
     let dir = repo_with_run();
-    flow(dir.path()).args(["done", "-m", "note"]).assert().success();
+    flow(dir.path())
+        .args(["done", "-m", "note"])
+        .assert()
+        .success();
 
     let file = read(dir.path(), ".flow/runs/auth-rework.md");
     let log = file.split("## Log").nth(1).unwrap();
@@ -215,26 +233,38 @@ fn next_and_done_need_no_slug_when_one_run_is_active() {
 #[test]
 fn next_and_done_demand_a_slug_when_several_runs_are_active() {
     let dir = repo_with_run();
-    flow(dir.path()).args(["start", "Other thing"]).assert().success();
+    flow(dir.path())
+        .args(["start", "Other thing"])
+        .assert()
+        .success();
 
     flow(dir.path())
         .arg("next")
         .assert()
         .failure()
         .stderr(predicates::str::contains("auth-rework"));
-    flow(dir.path()).args(["next", "auth-rework"]).assert().success();
+    flow(dir.path())
+        .args(["next", "auth-rework"])
+        .assert()
+        .success();
 }
 
 #[test]
 fn a_run_past_its_last_stage_says_so() {
     let dir = repo_with_run();
     for _ in 0..5 {
-        flow(dir.path()).args(["done", "-m", "on"]).assert().success();
+        flow(dir.path())
+            .args(["done", "-m", "on"])
+            .assert()
+            .success();
     }
     let out = stdout(flow(dir.path()).arg("next"));
     assert!(out.contains("flow finish"));
 
-    flow(dir.path()).args(["done", "-m", "again"]).assert().failure();
+    flow(dir.path())
+        .args(["done", "-m", "again"])
+        .assert()
+        .failure();
 }
 
 // --- ticket 04: the board --------------------------------------------------
@@ -242,8 +272,14 @@ fn a_run_past_its_last_stage_says_so() {
 #[test]
 fn status_lists_every_run_with_its_stage_and_progress() {
     let dir = repo_with_run();
-    flow(dir.path()).args(["start", "Billing fix", "--kind", "bug"]).assert().success();
-    flow(dir.path()).args(["done", "auth-rework", "-m", "note"]).assert().success();
+    flow(dir.path())
+        .args(["start", "Billing fix", "--kind", "bug"])
+        .assert()
+        .success();
+    flow(dir.path())
+        .args(["done", "auth-rework", "-m", "note"])
+        .assert()
+        .success();
 
     let out = stdout(flow(dir.path()).arg("status"));
     assert!(out.contains("RUN") && out.contains("KIND") && out.contains("STAGE"));
@@ -257,13 +293,22 @@ fn status_lists_every_run_with_its_stage_and_progress() {
 #[test]
 fn status_is_ordered_most_recently_updated_first() {
     let dir = repo_with_run();
-    flow(dir.path()).args(["start", "Billing fix"]).assert().success();
-    flow(dir.path()).args(["done", "auth-rework", "-m", "touched last"]).assert().success();
+    flow(dir.path())
+        .args(["start", "Billing fix"])
+        .assert()
+        .success();
+    flow(dir.path())
+        .args(["done", "auth-rework", "-m", "touched last"])
+        .assert()
+        .success();
 
     let out = stdout(flow(dir.path()).arg("status"));
     let auth = out.find("auth-rework").unwrap();
     let billing = out.find("billing-fix").unwrap();
-    assert!(auth < billing, "most recently updated run should lead:\n{out}");
+    assert!(
+        auth < billing,
+        "most recently updated run should lead:\n{out}"
+    );
 }
 
 #[test]
@@ -276,7 +321,10 @@ fn status_on_an_empty_repo_is_helpful_and_succeeds() {
 #[test]
 fn finished_runs_are_hidden_until_asked_for() {
     let dir = repo_with_run();
-    flow(dir.path()).args(["finish", "-m", "shipped"]).assert().success();
+    flow(dir.path())
+        .args(["finish", "-m", "shipped"])
+        .assert()
+        .success();
 
     assert!(!stdout(flow(dir.path()).arg("status")).contains("auth-rework"));
     assert!(stdout(flow(dir.path()).args(["status", "--all"])).contains("auth-rework"));
@@ -339,11 +387,17 @@ fn tracker_artifacts_are_never_checked_against_the_filesystem() {
     // spec's `tracker:issue`, which lives somewhere no filesystem can see.
     std::fs::create_dir_all(dir.path().join(".scratch/auth-rework")).unwrap();
     std::fs::write(dir.path().join(".scratch/auth-rework/grill.md"), "notes").unwrap();
-    flow(dir.path()).args(["done", "-m", "note"]).assert().success();
+    flow(dir.path())
+        .args(["done", "-m", "note"])
+        .assert()
+        .success();
 
     let out = stdout(flow(dir.path()).arg("status"));
     assert!(out.contains("spec"));
-    assert!(!out.contains("drift"), "tracker artifacts must not drift:\n{out}");
+    assert!(
+        !out.contains("drift"),
+        "tracker artifacts must not drift:\n{out}"
+    );
 }
 
 #[test]
@@ -351,7 +405,10 @@ fn a_stage_completed_without_its_declared_artifact_is_drift() {
     // The flow says grill leaves a file behind. Saying it is done when no such
     // file exists is exactly the kind of quiet lie drift is for.
     let dir = repo_with_run();
-    flow(dir.path()).args(["done", "-m", "note"]).assert().success();
+    flow(dir.path())
+        .args(["done", "-m", "note"])
+        .assert()
+        .success();
 
     let out = stdout(flow(dir.path()).arg("status"));
     assert!(out.contains("drift"));
@@ -370,11 +427,20 @@ fn the_artifact_template_resolves_the_run_slug() {
 #[test]
 fn an_optional_stage_can_be_skipped() {
     let dir = repo_with_run();
-    flow(dir.path()).args(["done", "-m", "n"]).assert().success(); // grill
-    flow(dir.path()).args(["done", "-m", "n"]).assert().success(); // spec
+    flow(dir.path())
+        .args(["done", "-m", "n"])
+        .assert()
+        .success(); // grill
+    flow(dir.path())
+        .args(["done", "-m", "n"])
+        .assert()
+        .success(); // spec
 
     // `tickets` is the only optional stage in the preset.
-    flow(dir.path()).args(["skip", "-m", "one-liner"]).assert().success();
+    flow(dir.path())
+        .args(["skip", "-m", "one-liner"])
+        .assert()
+        .success();
 
     let out = stdout(flow(dir.path()).arg("next"));
     assert!(out.contains("implement"));
@@ -398,10 +464,19 @@ fn a_required_stage_cannot_be_skipped_and_nothing_changes() {
 #[test]
 fn back_reopens_an_earlier_stage_and_keeps_the_log() {
     let dir = repo_with_run();
-    flow(dir.path()).args(["done", "-m", "GRILL NOTE"]).assert().success();
-    flow(dir.path()).args(["done", "-m", "SPEC NOTE"]).assert().success();
+    flow(dir.path())
+        .args(["done", "-m", "GRILL NOTE"])
+        .assert()
+        .success();
+    flow(dir.path())
+        .args(["done", "-m", "SPEC NOTE"])
+        .assert()
+        .success();
 
-    flow(dir.path()).args(["back", "-m", "spec was wrong"]).assert().success();
+    flow(dir.path())
+        .args(["back", "-m", "spec was wrong"])
+        .assert()
+        .success();
 
     let out = stdout(flow(dir.path()).arg("next"));
     assert!(out.contains("spec"));
@@ -417,7 +492,10 @@ fn back_reopens_an_earlier_stage_and_keeps_the_log() {
 fn back_can_name_a_stage_and_unsettles_everything_after_it() {
     let dir = repo_with_run();
     for _ in 0..4 {
-        flow(dir.path()).args(["done", "-m", "n"]).assert().success();
+        flow(dir.path())
+            .args(["done", "-m", "n"])
+            .assert()
+            .success();
     }
     flow(dir.path())
         .args(["back", "--stage", "spec", "-m", "rethink"])
@@ -440,7 +518,10 @@ fn back_refuses_to_move_forwards() {
         .args(["back", "--stage", "review", "-m", "no"])
         .assert()
         .failure();
-    flow(dir.path()).args(["back", "-m", "no"]).assert().failure();
+    flow(dir.path())
+        .args(["back", "-m", "no"])
+        .assert()
+        .failure();
 }
 
 #[test]
@@ -556,10 +637,19 @@ fn the_adapter_documents_the_real_command_surface() {
     let dir = repo();
     let skill = read(dir.path(), ".claude/skills/flow/SKILL.md");
     for command in [
-        "flow status", "flow next", "flow done", "flow skip", "flow back",
-        "flow finish", "flow start",
+        "flow status",
+        "flow next",
+        "flow done",
+        "flow skip",
+        "flow back",
+        "flow finish",
+        "flow reopen",
+        "flow start",
     ] {
-        assert!(skill.contains(command), "adapter never mentions `{command}`");
+        assert!(
+            skill.contains(command),
+            "adapter never mentions `{command}`"
+        );
     }
 }
 
@@ -617,7 +707,15 @@ fn commands_work_from_a_subdirectory_of_the_repo() {
 
     let mut cmd = Command::cargo_bin("flow").unwrap();
     cmd.current_dir(&nested);
-    let out = String::from_utf8(cmd.arg("next").assert().success().get_output().stdout.clone()).unwrap();
+    let out = String::from_utf8(
+        cmd.arg("next")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone(),
+    )
+    .unwrap();
     assert!(out.contains("Auth rework"));
 }
 
@@ -626,7 +724,11 @@ fn a_run_survives_being_read_by_a_process_that_never_wrote_it() {
     // The whole premise: everything a later session needs is on disk.
     let dir = repo_with_run();
     flow(dir.path())
-        .args(["done", "-m", "Grilled. Spec is next; the tracker choice is still open."])
+        .args([
+            "done",
+            "-m",
+            "Grilled. Spec is next; the tracker choice is still open.",
+        ])
         .assert()
         .success();
 
@@ -634,4 +736,109 @@ fn a_run_survives_being_read_by_a_process_that_never_wrote_it() {
     assert!(out.contains("spec"));
     assert!(out.contains("/to-spec"));
     assert!(out.contains("the tracker choice is still open"));
+}
+
+// --- review: gaps found reviewing the diff ---------------------------------
+
+#[test]
+fn deliberately_reopening_a_stage_is_not_reported_as_a_dead_session() {
+    let dir = repo_with_run();
+    std::fs::create_dir_all(dir.path().join(".scratch/auth-rework")).unwrap();
+    std::fs::write(dir.path().join(".scratch/auth-rework/grill.md"), "notes").unwrap();
+    flow(dir.path())
+        .args([
+            "done",
+            "-m",
+            "grilled",
+            "--artifact",
+            ".scratch/auth-rework/grill.md",
+        ])
+        .assert()
+        .success();
+
+    flow(dir.path())
+        .args(["back", "--stage", "grill", "-m", "grill was wrong, redoing"])
+        .assert()
+        .success();
+
+    let out = stdout(flow(dir.path()).arg("status"));
+    assert!(
+        !out.contains("drift"),
+        "a redo is not a dead session:\n{out}"
+    );
+
+    // Completing it again clears the reopened mark, so a genuinely dead session
+    // in that stage is still caught afterwards.
+    flow(dir.path())
+        .args(["done", "-m", "regrilled"])
+        .assert()
+        .success();
+    assert!(!read(dir.path(), ".flow/runs/auth-rework.md").contains("reopened"));
+}
+
+#[test]
+fn a_finished_run_refuses_recording_until_it_is_reopened() {
+    let dir = repo_with_run();
+    flow(dir.path())
+        .args(["finish", "-m", "shipped"])
+        .assert()
+        .success();
+
+    for args in [
+        vec!["done", "-m", "more"],
+        vec!["skip", "-m", "no"],
+        vec!["back", "-m", "no"],
+    ] {
+        flow(dir.path())
+            .args(&args)
+            .assert()
+            .failure()
+            .stderr(predicates::str::contains("flow reopen"));
+    }
+
+    flow(dir.path())
+        .args(["reopen", "-m", "review found a hole"])
+        .assert()
+        .success();
+    assert!(stdout(flow(dir.path()).arg("status")).contains("auth-rework"));
+    flow(dir.path())
+        .args(["done", "-m", "now it works"])
+        .assert()
+        .success();
+}
+
+#[test]
+fn a_handoff_quoting_the_log_heading_does_not_swallow_the_log() {
+    let dir = repo_with_run();
+    flow(dir.path())
+        .args(["done", "-m", "FIRST"])
+        .assert()
+        .success();
+    flow(dir.path())
+        .args(["done", "-m", "See the ## Log section below for history"])
+        .assert()
+        .success();
+
+    // A later process must still find both entries.
+    let out = stdout(flow(dir.path()).args(["show", "auth-rework"]));
+    assert!(out.contains("FIRST"));
+    assert!(out.contains("Started."));
+}
+
+#[test]
+fn a_stage_can_override_its_command_per_agent() {
+    let dir = TempDir::new().unwrap();
+    flow(dir.path()).arg("init").assert().success();
+    std::fs::write(
+        dir.path().join(".flow/flow.toml"),
+        "name = \"mine\"\n\n[[stage]]\nname = \"spec\"\ncommand = \"/to-spec\"\n\n\
+         [stage.agents]\ncodex = \"read SPEC.md and write the spec\"\n",
+    )
+    .unwrap();
+    flow(dir.path()).args(["start", "Thing"]).assert().success();
+
+    assert!(stdout(flow(dir.path()).arg("next")).contains("/to-spec"));
+    assert!(stdout(flow(dir.path()).args(["next", "--agent", "codex"])).contains("read SPEC.md"));
+    // An agent with no override falls back to the one command.
+    assert!(stdout(flow(dir.path()).args(["next", "--agent", "cursor"])).contains("/to-spec"));
 }

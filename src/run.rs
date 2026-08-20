@@ -46,6 +46,14 @@ pub struct StageRecord {
     pub started: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed: Option<String>,
+    /// Set when `flow back` reopens a stage that had already been settled. Its
+    /// artifact legitimately exists, so the died-mid-stage check must not fire.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub reopened: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// The frontmatter of a run file. Field order matters: `toml` requires scalars
@@ -102,6 +110,7 @@ impl Run {
                 artifact: None,
                 started: if i == 0 { Some(now.clone()) } else { None },
                 completed: None,
+                reopened: false,
             })
             .collect();
         Run {
@@ -137,7 +146,8 @@ impl Run {
     }
 
     pub fn current_stage_name(&self) -> Option<&str> {
-        self.current_index().map(|i| self.meta.stages[i].name.as_str())
+        self.current_index()
+            .map(|i| self.meta.stages[i].name.as_str())
     }
 
     /// Stages settled one way or another, over the total. Used for `3/5`.
@@ -179,13 +189,14 @@ impl Run {
                     stage: record.name.clone(),
                     message: format!("marked done but {artifact} is missing"),
                 }),
-                (StageStatus::Pending | StageStatus::InProgress, true) => out.push(Drift {
-                    stage: record.name.clone(),
-                    message: format!(
-                        "{artifact} exists but the stage is {} — did a session die here?",
-                        record.status
-                    ),
-                }),
+                (StageStatus::Pending | StageStatus::InProgress, true) if !record.reopened => out
+                    .push(Drift {
+                        stage: record.name.clone(),
+                        message: format!(
+                            "{artifact} exists but the stage is {} — did a session die here?",
+                            record.status
+                        ),
+                    }),
                 _ => {}
             }
         }
@@ -195,8 +206,8 @@ impl Run {
     pub fn load(path: &Path) -> Result<Run> {
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("could not read {}", path.display()))?;
-        let mut run = Run::parse(&text)
-            .with_context(|| format!("could not parse {}", path.display()))?;
+        let mut run =
+            Run::parse(&text).with_context(|| format!("could not parse {}", path.display()))?;
         run.path = path.to_path_buf();
         Ok(run)
     }
@@ -269,15 +280,29 @@ impl Run {
 /// Split a run body into its handoff block and its log. Anything before the
 /// handoff heading is discarded; anything after the log heading is kept verbatim.
 fn split_body(body: &str) -> (String, String) {
-    let (before_log, log) = match body.find(LOG_HEADING) {
+    let (before_log, log) = match find_heading(body, LOG_HEADING) {
         Some(i) => (&body[..i], body[i + LOG_HEADING.len()..].trim().to_string()),
         None => (body, String::new()),
     };
-    let handoff = match before_log.find(HANDOFF_HEADING) {
+    let handoff = match find_heading(before_log, HANDOFF_HEADING) {
         Some(i) => before_log[i + HANDOFF_HEADING.len()..].trim().to_string(),
         None => before_log.trim().to_string(),
     };
     (handoff, log)
+}
+
+/// A heading only counts at the start of a line — otherwise a handoff message
+/// that happens to quote `## Log` would swallow the log behind it.
+fn find_heading(text: &str, heading: &str) -> Option<usize> {
+    let mut from = 0;
+    while let Some(offset) = text[from..].find(heading) {
+        let at = from + offset;
+        if at == 0 || text[..at].ends_with('\n') {
+            return Some(at);
+        }
+        from = at + heading.len();
+    }
+    None
 }
 
 /// Millisecond precision, because runs updated within the same second must
@@ -341,16 +366,30 @@ pub fn resolve(root: &Path, slug: Option<&str>) -> Result<Run> {
         }
         return Run::load(&path);
     }
-    let mut active: Vec<Run> = load_all(root)?.into_iter().filter(|r| !r.is_finished()).collect();
+    let all = load_all(root)?;
+    let mut active: Vec<Run> = all.iter().filter(|r| !r.is_finished()).cloned().collect();
     match active.len() {
-        0 => Err(anyhow!("no active runs — start one with `flow start \"<title>\"`")),
-        1 => Ok(active.remove(0)),
-        _ => {
+        1 => return Ok(active.remove(0)),
+        n if n > 1 => {
             let names: Vec<&str> = active.iter().map(|r| r.meta.slug.as_str()).collect();
-            Err(anyhow!(
+            return Err(anyhow!(
                 "several active runs — name one of: {}",
                 names.join(", ")
-            ))
+            ));
         }
+        _ => {}
+    }
+
+    // No active runs. A single finished one is still what the user means, so
+    // resolve to it and let the command say why it will not budge.
+    let mut all = all;
+    match all.len() {
+        0 => Err(anyhow!(
+            "no runs yet — start one with `flow start \"<title>\"`"
+        )),
+        1 => Ok(all.remove(0)),
+        _ => Err(anyhow!(
+            "every run is finished — name one, or see them with `flow status --all`"
+        )),
     }
 }
