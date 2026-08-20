@@ -1,6 +1,7 @@
 mod commands;
 mod config;
 mod flow;
+mod prompt;
 mod run;
 
 use anyhow::Result;
@@ -34,11 +35,18 @@ enum Command {
     /// List the flows that ship in the binary
     Presets,
     /// Begin a new run through the flow
+    ///
+    /// Anything left out is asked for, when you are at a terminal. Elsewhere —
+    /// an agent, a script, a pipe — what you pass is all it gets.
     Start {
-        title: String,
+        title: Option<String>,
         /// feature, bug, task, project — free text, for your eyes only
-        #[arg(long, default_value = "")]
-        kind: String,
+        #[arg(long)]
+        kind: Option<String>,
+        /// The brief: what this work is, in your words. It becomes the run's
+        /// first handoff, and is all the first stage has to go on.
+        #[arg(short, long)]
+        message: Option<String>,
     },
     /// Choose the run that bare commands act on
     Switch { slug: String },
@@ -151,7 +159,13 @@ fn run() -> Result<()> {
                 commands::config::show(&root)
             }
         }
-        Command::Start { title, kind } => commands::lifecycle::start(&root, &title, &kind),
+        Command::Start {
+            title,
+            kind,
+            message,
+        } => {
+            commands::lifecycle::start(&root, title.as_deref(), kind.as_deref(), message.as_deref())
+        }
         Command::Show { slug } => commands::lifecycle::show(&root, slug.as_deref()),
         Command::Finish { slug, message } => {
             commands::lifecycle::finish(&root, slug.as_deref(), message.as_deref())

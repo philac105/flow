@@ -80,7 +80,7 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
     println!("wrote {} (flow block)", rel(root, &agents));
 
     println!(
-        "\nEdit {} to make the flow yours, then:\n  flow start \"<what you're building>\"",
+        "\nEdit {} to make the flow yours, then:\n  flow start   (it asks what you're building, and what it is)",
         rel(root, &flow_path(root))
     );
 

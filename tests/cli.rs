@@ -29,7 +29,14 @@ fn repo() -> TempDir {
 fn repo_with_run() -> TempDir {
     let dir = repo();
     flow(dir.path())
-        .args(["start", "Auth rework", "--kind", "feature"])
+        .args([
+            "start",
+            "Auth rework",
+            "--kind",
+            "feature",
+            "-m",
+            "Sessions outlive their tokens; rework auth so they do not.",
+        ])
         .assert()
         .success();
     dir
@@ -891,6 +898,62 @@ fn go_launches_the_configured_agent_with_the_assembled_prompt() {
     assert!(prompt.contains("## Where we are"));
     assert!(prompt.contains("flow done auth-rework -m"));
     assert!(prompt.contains("--artifact .scratch/auth-rework/grill.md"));
+}
+
+#[test]
+fn the_brief_given_at_start_becomes_the_first_handoff() {
+    let dir = repo_with_run();
+
+    let file = read(dir.path(), ".flow/runs/auth-rework.md");
+    let (_, body) = file.split_once("## Where we are").unwrap();
+    let (handoff, log) = body.split_once("## Log").unwrap();
+
+    assert!(handoff.contains("Sessions outlive their tokens"));
+    assert!(log.contains("Sessions outlive their tokens"));
+
+    // And it reaches the agent that picks the first stage up.
+    let out = stdout(flow(dir.path()).arg("next"));
+    assert!(out.contains("Sessions outlive their tokens"));
+}
+
+#[test]
+fn nothing_is_asked_for_when_no_one_is_there_to_answer() {
+    let dir = repo();
+    // Not a terminal, so the missing title is an error rather than a question
+    // no agent on the other end could answer.
+    flow(dir.path())
+        .arg("start")
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("no title"));
+    assert!(!dir.path().join(".flow/current").exists());
+}
+
+#[test]
+fn a_colliding_run_is_refused_before_anything_is_asked_for() {
+    let dir = repo_with_run();
+    // The refusal has to come first: a brief typed at a prompt behind it would
+    // be typed for nothing.
+    flow(dir.path())
+        .args(["start", "Auth rework"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("already exists"));
+}
+
+#[test]
+fn starting_without_a_brief_says_so_instead_of_pretending() {
+    let dir = repo();
+    flow(dir.path())
+        .args(["start", "Auth rework"])
+        .assert()
+        .success();
+
+    let file = read(dir.path(), ".flow/runs/auth-rework.md");
+    let (_, body) = file.split_once("## Where we are").unwrap();
+    assert!(body.contains("No brief was given"));
+    // The stage still has to be findable underneath it.
+    assert!(body.contains("/grill-with-docs"));
 }
 
 #[test]

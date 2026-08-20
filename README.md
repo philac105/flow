@@ -83,7 +83,7 @@ The crate is `runflow`; the binary it installs is `flow`.
 
 ```bash
 flow init                      # write the flow and the agent adapter into this repo
-flow start "Auth rework" --kind feature   # and it becomes current
+flow start                     # asks for the title, kind and brief; becomes current
 flow switch billing-fix        # change what bare commands act on
 flow next                      # what to do now, and the command for it
 flow go                        # hand the stage to your agent, prompt included
@@ -92,6 +92,22 @@ flow done -m "<handoff>"       # record it and advance
 flow status                    # the board
 flow board                     # the board as a standalone HTML file
 ```
+
+`flow start` asks for anything you leave out — the title, the kind, and the
+**brief**: what the work actually is, in your words. The brief becomes the run's
+first handoff, so the first stage opens with something to work from instead of a
+slug. Pass it directly when you would rather not be asked, which is how agents
+and scripts do it:
+
+```bash
+flow start "Auth rework" --kind feature -m "Sessions die mid-stage and lose
+their context. Rework auth so a resumed session re-authenticates silently."
+```
+
+Nothing is ever asked for when the other end is not a terminal — an agent
+running `flow start` gets what it passed and no questions. Leave the brief out
+and the run says so, in the handoff, rather than opening with boilerplate that
+reads like context.
 
 When a stage doesn't apply, or a review sends work back:
 

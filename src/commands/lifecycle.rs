@@ -1,17 +1,39 @@
 use crate::flow::Flow;
+use crate::prompt;
 use crate::run::{self, Run, RunStatus, StageStatus};
 use anyhow::{anyhow, Result};
 use std::path::Path;
 
-pub fn start(root: &Path, title: &str, kind: &str) -> Result<()> {
+/// Begin a run. Every argument is optional at the command line and filled in
+/// by asking, so `flow start` on its own is a complete way in. Nothing is asked
+/// unless a person is there to answer — see [`crate::prompt`].
+pub fn start(
+    root: &Path,
+    title: Option<&str>,
+    kind: Option<&str>,
+    brief: Option<&str>,
+) -> Result<()> {
     let flow = Flow::load(root)?;
-    let slug = run::slugify(title);
+    let asking = prompt::interactive();
+
+    let title = match title {
+        Some(title) => title.to_string(),
+        None if asking => prompt::line("title")?,
+        None => return Err(anyhow!("no title — `flow start \"<title>\"`")),
+    };
+    if title.trim().is_empty() {
+        return Err(anyhow!("no title — `flow start \"<title>\"`"));
+    }
+
+    let slug = run::slugify(&title);
     if slug.is_empty() {
         return Err(anyhow!(
             "`{title}` has no characters a slug can be made from"
         ));
     }
 
+    // Everything that can refuse the run refuses it before the questions, so a
+    // brief someone has just typed is never thrown away.
     let path = Run::path_for(root, &slug);
     if path.exists() {
         return Err(anyhow!(
@@ -20,13 +42,36 @@ pub fn start(root: &Path, title: &str, kind: &str) -> Result<()> {
         ));
     }
 
-    let mut run = Run::new(slug.clone(), title.to_string(), kind.to_string(), &flow);
+    let kind = match kind {
+        Some(kind) => kind.to_string(),
+        None if asking => prompt::line("kind (feature, bug, task — enter to skip)")?,
+        None => String::new(),
+    };
+    let brief = match brief {
+        Some(brief) => brief.to_string(),
+        None if asking => prompt::paragraph(&format!(
+            "brief — what this work is, for whoever picks up `{}` cold (blank line to finish)",
+            flow.stages[0].name
+        ))?,
+        None => String::new(),
+    };
+
+    let mut run = Run::new(slug.clone(), title.clone(), kind, &flow);
     run.path = path;
     let first = &flow.stages[0];
+    // The brief is the whole reason the first stage has anything to work with.
+    // Without it a cold agent gets a slug and nothing else, so say so plainly
+    // rather than opening with boilerplate that reads like context.
+    let opening = match brief.trim() {
+        "" => "No brief was given — the title is all there is. Find out what this work \
+               actually is, and who wants it, before doing the stage."
+            .to_string(),
+        brief => brief.to_string(),
+    };
     run.record(
         &format!("Started. First stage is `{}`.", first.name),
         Some(&format!(
-            "{}\n\nRun `{}` next.",
+            "{opening}\n\n{}\n\nRun `{}` next.",
             first.description, first.command
         )),
     );
@@ -35,6 +80,9 @@ pub fn start(root: &Path, title: &str, kind: &str) -> Result<()> {
     // working on, so it becomes current.
     run::set_current(root, &slug)?;
 
+    if asking {
+        println!();
+    }
     println!("started `{slug}` (now current)\n");
     print_next(&flow, &run, None);
     Ok(())

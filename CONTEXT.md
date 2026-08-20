@@ -58,6 +58,12 @@ stands right now. Rewritten on every Stage transition, never appended to. The
 first thing a cold agent reads.
 _Avoid_: summary, status note, context dump
 
+**Brief**:
+What the work is, in the words of whoever started it, captured by `flow start`.
+It becomes the Run's first Handoff, and is the only context the first Stage has
+to go on.
+_Avoid_: description, context, prompt, blurb
+
 **Log**:
 The append-only history below the Handoff, one entry per Stage transition.
 Never rewritten. The Handoff says where we are; the Log says how we got here.

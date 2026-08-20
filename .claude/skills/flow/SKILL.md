@@ -35,6 +35,22 @@ If `flow next` reports **drift**, stop and resolve it with the user first. Drift
 means a stage's recorded status disagrees with whether its artifact exists on
 disk — almost always a session that died mid-stage. Do not guess which is right.
 
+## Starting a run
+
+```bash
+flow start "<title>" --kind feature -m "<the brief>"
+```
+
+The `-m` brief is the run's first handoff, and the only context the first stage
+has. Write down what the user actually said the work is — the problem, the
+constraints they named, why now. A title alone leaves the first stage
+interrogating a slug.
+
+If the user has not told you enough to write one, ask them before starting the
+run. Do not invent a brief, and do not start without one and hope the stage
+recovers it. `flow` asks for anything you leave out only when a person is at a
+terminal — it will never ask you, so what you pass is all the run gets.
+
 ## Working a stage
 
 1. `flow next` — read the stage description and the command.
@@ -63,7 +79,7 @@ flow back -m "..."               # review kicked the work back
 flow back --stage implement -m "..."
 flow finish -m "..."             # the run is complete
 flow reopen -m "..."             # a finished run turned out not to be
-flow start "<title>" --kind bug  # begin a new run
+flow start "<title>" --kind bug -m "<the brief>"  # begin a new run
 ```
 
 ## Rules
