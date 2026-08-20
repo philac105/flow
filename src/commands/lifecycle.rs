@@ -107,6 +107,15 @@ pub fn finish(root: &Path, slug: Option<&str>, message: Option<&str>) -> Result<
 pub fn switch(root: &Path, slug: &str) -> Result<()> {
     let flow = Flow::load(root)?;
     let run = run::resolve(root, Some(slug))?;
+    // A finished run cannot be current: `resolve` steps over one, so the
+    // pointer would say `beta` while the next `flow done` wrote into `alpha`.
+    if run.is_finished() {
+        return Err(anyhow!(
+            "`{}` is finished — bring it back with `flow reopen {}` instead",
+            run.meta.slug,
+            run.meta.slug
+        ));
+    }
     run::set_current(root, &run.meta.slug)?;
     println!("switched to `{}`\n", run.meta.slug);
     print_next(&flow, &run, None);
@@ -122,8 +131,12 @@ pub fn reopen(root: &Path, slug: Option<&str>, message: Option<&str>) -> Result<
     run.meta.status = RunStatus::Active;
     run.record("Reopened.", message);
     run.save()?;
+    // Same reasoning as `start`: picking a run back up says which one you are
+    // on. Without this the pointer stays on whatever else is active, and the
+    // next bare `flow done` records against that instead.
+    run::set_current(root, &run.meta.slug)?;
 
-    println!("reopened `{}`\n", run.meta.slug);
+    println!("reopened `{}` (now current)\n", run.meta.slug);
     print_next(&flow, &run, None);
     Ok(())
 }

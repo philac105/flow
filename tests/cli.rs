@@ -1253,6 +1253,57 @@ fn switching_to_an_unknown_run_fails() {
     flow(dir.path()).args(["switch", "nope"]).assert().failure();
 }
 
+#[test]
+fn switching_to_a_finished_run_is_refused() {
+    let dir = repo();
+    flow(dir.path()).args(["start", "First"]).assert().success();
+    flow(dir.path())
+        .args(["start", "Second"])
+        .assert()
+        .success();
+    flow(dir.path())
+        .args(["finish", "second", "-m", "shipped"])
+        .assert()
+        .success();
+
+    // Pointing at a finished run would be a pointer nothing follows: `next`
+    // and `done` step over it, so they would act on `first` regardless.
+    flow(dir.path())
+        .args(["switch", "second"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("flow reopen"));
+    assert!(stdout(flow(dir.path()).arg("next")).contains("First"));
+}
+
+#[test]
+fn reopening_a_run_makes_it_current() {
+    let dir = repo();
+    flow(dir.path()).args(["start", "First"]).assert().success();
+    flow(dir.path())
+        .args(["finish", "first", "-m", "shipped"])
+        .assert()
+        .success();
+    // `second` is started after, so it is the one the pointer names.
+    flow(dir.path())
+        .args(["start", "Second"])
+        .assert()
+        .success();
+
+    flow(dir.path())
+        .args(["reopen", "first", "-m", "back on it"])
+        .assert()
+        .success();
+
+    assert!(stdout(flow(dir.path()).arg("next")).contains("First"));
+    flow(dir.path())
+        .args(["done", "-m", "handoff for first"])
+        .assert()
+        .success();
+    assert!(read(dir.path(), ".flow/runs/first.md").contains("handoff for first"));
+    assert!(!read(dir.path(), ".flow/runs/second.md").contains("handoff for first"));
+}
+
 // --- choosing a flow -------------------------------------------------------
 
 #[test]
