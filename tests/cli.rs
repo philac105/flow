@@ -1895,3 +1895,55 @@ fn an_unknown_preset_lists_presets_from_every_layer() {
         .stderr(predicates::str::contains("spike"))
         .stderr(predicates::str::contains("minimal"));
 }
+
+// --- ticket 16: config answers "where do I put a flow of my own" ------------
+
+#[test]
+fn config_names_the_presets_directories_it_reads() {
+    let dir = repo();
+    write_preset(&dir.path().join("xdg/flow/presets"), "spike", "Throwaway.");
+    write_preset(&dir.path().join(".flow/presets"), "house", "Ours.");
+
+    let out = stdout(flow(dir.path()).arg("config"));
+
+    assert!(
+        out.contains("xdg/flow/presets"),
+        "the user presets directory is unnamed:\n{out}"
+    );
+    assert!(
+        out.contains(".flow/presets"),
+        "the project presets directory is unnamed:\n{out}"
+    );
+}
+
+#[test]
+fn config_marks_a_presets_directory_that_does_not_exist_yet() {
+    // "Where do I create it" is answered by the exact path on screen, not by
+    // something the reader has to infer.
+    let dir = repo();
+    assert!(!dir.path().join(".flow/presets").exists());
+
+    let out = stdout(flow(dir.path()).arg("config"));
+
+    let row = out
+        .lines()
+        .find(|line| line.contains(".flow/presets"))
+        .unwrap_or_else(|| panic!("the project presets directory is missing:\n{out}"));
+    assert!(row.contains("does not exist"), "unmarked: {row}");
+}
+
+#[test]
+fn config_names_an_ancestor_presets_directory_it_inherits_from() {
+    let outer = TempDir::new().unwrap();
+    write_preset(&outer.path().join(".flow/presets"), "house", "Ours.");
+    let pkg = outer.path().join("packages/api");
+    std::fs::create_dir_all(&pkg).unwrap();
+    flow_from(&pkg, outer.path()).arg("init").assert().success();
+
+    let out = stdout(flow_from(&pkg, outer.path()).arg("config"));
+
+    assert!(
+        out.contains(&outer.path().join(".flow/presets").display().to_string()),
+        "an inherited presets directory is invisible:\n{out}"
+    );
+}

@@ -31,6 +31,14 @@ pub fn show(root: &Path) -> Result<()> {
         None => println!("  unavailable (no HOME or XDG_CONFIG_HOME)"),
     }
 
+    // Where a flow of your own goes. `flow` only ever reads these (ADR-0008),
+    // so an absent one is named rather than omitted: the answer to "where do I
+    // create it" has to be the exact path on screen.
+    match crate::config::user_presets_dir() {
+        Some(dir) => println!("  {}{}", dir.display(), missing(&dir)),
+        None => println!("  unavailable (no HOME or XDG_CONFIG_HOME)"),
+    }
+
     println!("\nThe project's — which stages exist, committed and shared:");
     let path = flow_path(root);
     println!(
@@ -42,6 +50,17 @@ pub fn show(root: &Path) -> Result<()> {
             "   (no flow here — `flow init`)"
         }
     );
+
+    // The nearest presets directory always, because that is the one you would
+    // create; the ancestors only when they exist, because every directory up to
+    // the filesystem root is one you could theoretically create.
+    let mut project_dirs = crate::preset_path::project_dirs(root).into_iter();
+    if let Some(nearest) = project_dirs.next() {
+        println!("  {}{}", nearest.display(), missing(&nearest));
+    }
+    for inherited in project_dirs.filter(|dir| dir.is_dir()) {
+        println!("  {}   (inherited from an ancestor)", inherited.display());
+    }
 
     println!(
         "\nDefault agent: {}",
@@ -134,6 +153,15 @@ pub fn init() -> Result<()> {
         path.display()
     );
     Ok(())
+}
+
+/// The note a directory carries when it is not there yet.
+fn missing(dir: &Path) -> &'static str {
+    if dir.is_dir() {
+        ""
+    } else {
+        "   (does not exist — drop a .toml in here to add a flow)"
+    }
 }
 
 /// `flow config` should work outside a flow repo, where there is no flow to read.
