@@ -1,5 +1,40 @@
 /target
 
+# rustfmt keeps the pre-format copy of anything it rewrote.
+**/*.rs.bk
+# Debug symbols dropped beside a Windows build.
+*.pdb
+
+# Profiling and coverage output, written into whatever directory you ran the
+# tool from.
+*.profraw
+*.profdata
+/lcov.info
+/tarpaulin-report.html
+flamegraph.svg
+perf.data
+perf.data.old
+
 # Editor state, per-developer and never shared.
 /.idea/
 .vscode/
+.zed/
+*~
+*.swp
+*.swo
+
+# Whatever the OS leaves behind in a directory it has looked at.
+.DS_Store
+Thumbs.db
+
+# Agent state that belongs to this checkout: where you left off, and the
+# permissions you granted on this machine. The skill in `.claude/skills/`
+# is shared and stays tracked.
+/.claude/RESUME.md
+/.claude/settings.local.json
+
+# Secrets. Nothing here reads a dotenv today; the guard costs a line and its
+# absence costs a leaked key.
+.env
+.env.*
+!.env.example
