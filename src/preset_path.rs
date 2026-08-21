@@ -48,6 +48,22 @@ impl fmt::Display for Layer {
     }
 }
 
+/// A file in a presets directory that is not a preset, and why. Never fatal:
+/// a half-finished flow someone is drafting must not break the repo they are
+/// actually initialising.
+pub struct Skipped {
+    pub path: PathBuf,
+    /// A predicate, so that `<path> <reason>` reads as a sentence.
+    pub reason: String,
+}
+
+/// Everything the Preset Path turned up: what you can init with, and what was
+/// declined.
+pub struct Discovered {
+    pub presets: Vec<Preset>,
+    pub skipped: Vec<Skipped>,
+}
+
 /// A preset that won its name, and whatever it beat.
 pub struct Preset {
     pub name: String,
@@ -62,12 +78,14 @@ pub struct Preset {
     pub shadowed: Vec<Layer>,
 }
 
-/// Every preset reachable from `start`, by name. One entry per name: the
-/// nearest owner of it, carrying the layers it shadowed.
-pub fn discover(start: &Path) -> Vec<Preset> {
+/// Every preset reachable from `start`, by name — one entry per name, the
+/// nearest owner of it, carrying the layers it shadowed — plus the files that
+/// were declined and why.
+pub fn discover(start: &Path) -> Discovered {
     let mut by_name: BTreeMap<String, Preset> = BTreeMap::new();
+    let (found, skipped) = candidates(start);
 
-    for (layer, name, description, contents) in candidates(start) {
+    for (layer, name, description, contents) in found {
         match by_name.get_mut(&name) {
             // Already claimed by a nearer owner: this one is shadowed, and says
             // so rather than vanishing.
@@ -87,7 +105,10 @@ pub fn discover(start: &Path) -> Vec<Preset> {
         }
     }
 
-    by_name.into_values().collect()
+    Discovered {
+        presets: by_name.into_values().collect(),
+        skipped,
+    }
 }
 
 /// The presets directories the project layer reads, nearest ancestor first.
@@ -107,17 +128,21 @@ pub fn project_dirs(start: &Path) -> Vec<PathBuf> {
 }
 
 /// Every preset file on the Path, nearest owner first — so the first entry for
-/// a name is the one that wins.
-fn candidates(start: &Path) -> Vec<(Layer, String, String, String)> {
+/// a name is the one that wins — and every file declined along the way.
+#[allow(clippy::type_complexity)]
+fn candidates(start: &Path) -> (Vec<(Layer, String, String, String)>, Vec<Skipped>) {
     let mut found = Vec::new();
+    let mut skipped = Vec::new();
 
     for dir in project_dirs(start) {
         let layer = Layer::Project(dir.clone());
-        read_dir(&dir, &layer, &mut found);
+        read_dir(&dir, &layer, &mut found, &mut skipped);
     }
     if let Some(dir) = user_presets_dir() {
-        read_dir(&dir, &Layer::User, &mut found);
+        read_dir(&dir, &Layer::User, &mut found, &mut skipped);
     }
+    // Nothing shipped can be skipped: the build script already refused to
+    // publish a preset that fails these checks.
     for preset in crate::presets::SHIPPED {
         found.push((
             Layer::Shipped,
@@ -127,12 +152,17 @@ fn candidates(start: &Path) -> Vec<(Layer, String, String, String)> {
         ));
     }
 
-    found
+    (found, skipped)
 }
 
-/// Every readable preset in one directory, in filename order. A directory that
-/// is absent or unreadable is not an error — most of them will not exist.
-fn read_dir(dir: &Path, layer: &Layer, found: &mut Vec<(Layer, String, String, String)>) {
+/// Every preset in one directory, in filename order. A directory that is absent
+/// or unreadable is not an error — most of them will not exist.
+fn read_dir(
+    dir: &Path,
+    layer: &Layer,
+    found: &mut Vec<(Layer, String, String, String)>,
+    skipped: &mut Vec<Skipped>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -149,23 +179,57 @@ fn read_dir(dir: &Path, layer: &Layer, found: &mut Vec<(Layer, String, String, S
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
             continue;
         };
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            continue;
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) => {
+                skipped.push(Skipped {
+                    path,
+                    reason: format!("could not be read: {e}"),
+                });
+                continue;
+            }
         };
-        // A file we cannot make sense of is skipped, never fatal: one bad
-        // preset must not stop the repo you are actually initialising.
-        if let Ok(flow) = parse(stem, &text) {
-            found.push((layer.clone(), stem.to_string(), flow.description, text));
+        match parse(stem, &text) {
+            Ok(flow) => found.push((layer.clone(), stem.to_string(), flow.description, text)),
+            Err(reason) => skipped.push(Skipped { path, reason }),
         }
     }
 }
 
-/// A preset file, or why it is not one.
+/// A preset file, or why it is not one — written as a predicate, for whoever
+/// has to fix the file.
 fn parse(stem: &str, text: &str) -> Result<Flow, String> {
-    let flow: Flow = toml::from_str(text).map_err(|e| e.to_string())?;
+    // Told apart deliberately: TOML that will not lex is a different mistake
+    // from TOML that lexes into something that is not a flow.
+    text.parse::<toml::Table>()
+        .map_err(|e| format!("is not valid TOML: {}", one_line(&e.to_string())))?;
+    let flow: Flow = toml::from_str(text)
+        .map_err(|e| format!("does not read as a flow: {}", one_line(&e.to_string())))?;
     if flow.stages.is_empty() {
         return Err("declares no stages".to_string());
     }
+    // The runtime half of the rule the build script enforces fatally: we
+    // control what ships, but a user's directory is theirs.
     crate::preset_name::check(stem, &flow.name)?;
     Ok(flow)
+}
+
+/// `toml` reports an error as a location, an echo of the offending line, and a
+/// caret under it. On one line the echo and the caret art are noise, so this
+/// keeps the sentences and drops the drawing.
+fn one_line(message: &str) -> String {
+    message
+        .lines()
+        // The echo of the source line, which the reader has in front of them.
+        .filter(|line| !line.trim_start().starts_with(|c: char| c.is_ascii_digit()))
+        .map(|line| {
+            line.trim()
+                .trim_start_matches('|')
+                .trim()
+                .trim_start_matches('^')
+                .trim()
+        })
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("; ")
 }

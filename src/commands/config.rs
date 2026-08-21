@@ -78,19 +78,20 @@ pub fn presets(root: &Path) -> Result<()> {
     };
 
     let found = crate::preset_path::discover(root);
+    let presets = &found.presets;
     println!("Flows you can init with, nearest owner first — the project's, then yours, then what ships.");
     println!("`flow init --preset <name>`, or pass a path to a .toml of your own.\n");
 
     // Wide enough for the longest name, so a preset someone wrote does not
     // wrap the column just by having a longer name than ours.
-    let width = found
+    let width = presets
         .iter()
         .map(|p| p.name.len())
         .max()
         .unwrap_or(0)
         .max(10)
         + 2;
-    for preset in &found {
+    for preset in presets {
         let mark = if preset.name == default { "*" } else { " " };
         println!(
             "  {mark} {:<width$}{:<9}{}",
@@ -102,6 +103,15 @@ pub fn presets(root: &Path) -> Result<()> {
         // loses an afternoon to a flow they do not recognise.
         for beaten in &preset.shadowed {
             println!("      the {beaten} one is shadowed by {}", preset.layer);
+        }
+    }
+
+    // Only when there is something to say: a directory with nothing wrong in
+    // it should look like a directory with nothing wrong in it.
+    if !found.skipped.is_empty() {
+        println!("\nSkipped:");
+        for file in &found.skipped {
+            println!("    {} {}", file.path.display(), file.reason);
         }
     }
 
