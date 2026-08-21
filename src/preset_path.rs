@@ -64,6 +64,14 @@ pub struct Discovered {
     pub skipped: Vec<Skipped>,
 }
 
+/// A preset that lost its name to a nearer one. It keeps its description,
+/// because knowing *that* you overrode something is only half of knowing what
+/// you overrode.
+pub struct Shadowed {
+    pub layer: Layer,
+    pub description: String,
+}
+
 /// A preset that won its name, and whatever it beat.
 pub struct Preset {
     pub name: String,
@@ -71,9 +79,9 @@ pub struct Preset {
     /// The flow itself, which `init` writes out verbatim.
     pub contents: String,
     pub layer: Layer,
-    /// The layers that carry this name too but were farther away, nearest
+    /// The presets that carry this name too but were farther away, nearest
     /// first. Empty for almost every preset.
-    pub shadowed: Vec<Layer>,
+    pub shadowed: Vec<Shadowed>,
 }
 
 /// Every preset reachable from `start`, by name — one entry per name, the
@@ -83,22 +91,16 @@ pub fn discover(start: &Path) -> Discovered {
     let mut by_name: BTreeMap<String, Preset> = BTreeMap::new();
     let (found, skipped) = candidates(start);
 
-    for (layer, name, description, contents) in found {
-        match by_name.get_mut(&name) {
+    for preset in found {
+        match by_name.get_mut(&preset.name) {
             // Already claimed by a nearer owner: this one is shadowed, and says
             // so rather than vanishing.
-            Some(winner) => winner.shadowed.push(layer),
+            Some(winner) => winner.shadowed.push(Shadowed {
+                layer: preset.layer,
+                description: preset.description,
+            }),
             None => {
-                by_name.insert(
-                    name.clone(),
-                    Preset {
-                        name,
-                        description,
-                        contents,
-                        layer,
-                        shadowed: Vec::new(),
-                    },
-                );
+                by_name.insert(preset.name.clone(), preset);
             }
         }
     }
@@ -127,8 +129,7 @@ pub fn project_dirs(start: &Path) -> Vec<PathBuf> {
 
 /// Every preset file on the Path, nearest owner first — so the first entry for
 /// a name is the one that wins — and every file declined along the way.
-#[allow(clippy::type_complexity)]
-fn candidates(start: &Path) -> (Vec<(Layer, String, String, String)>, Vec<Skipped>) {
+fn candidates(start: &Path) -> (Vec<Preset>, Vec<Skipped>) {
     let mut found = Vec::new();
     let mut skipped = Vec::new();
 
@@ -142,12 +143,13 @@ fn candidates(start: &Path) -> (Vec<(Layer, String, String, String)>, Vec<Skippe
     // Nothing shipped can be skipped: the build script already refused to
     // publish a preset that fails these checks.
     for preset in crate::presets::SHIPPED {
-        found.push((
-            Layer::Shipped,
-            preset.name.to_string(),
-            preset.description.to_string(),
-            preset.contents.to_string(),
-        ));
+        found.push(Preset {
+            name: preset.name.to_string(),
+            description: preset.description.to_string(),
+            contents: preset.contents.to_string(),
+            layer: Layer::Shipped,
+            shadowed: Vec::new(),
+        });
     }
 
     (found, skipped)
@@ -155,12 +157,7 @@ fn candidates(start: &Path) -> (Vec<(Layer, String, String, String)>, Vec<Skippe
 
 /// Every preset in one directory, in filename order. A directory that is absent
 /// or unreadable is not an error — most of them will not exist.
-fn read_dir(
-    dir: &Path,
-    layer: &Layer,
-    found: &mut Vec<(Layer, String, String, String)>,
-    skipped: &mut Vec<Skipped>,
-) {
+fn read_dir(dir: &Path, layer: &Layer, found: &mut Vec<Preset>, skipped: &mut Vec<Skipped>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -188,7 +185,13 @@ fn read_dir(
             }
         };
         match parse(stem, &text) {
-            Ok(flow) => found.push((layer.clone(), stem.to_string(), flow.description, text)),
+            Ok(flow) => found.push(Preset {
+                name: stem.to_string(),
+                description: flow.description,
+                contents: text,
+                layer: layer.clone(),
+                shadowed: Vec::new(),
+            }),
             Err(reason) => skipped.push(Skipped { path, reason }),
         }
     }

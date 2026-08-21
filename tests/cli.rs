@@ -1639,6 +1639,34 @@ fn a_shadowed_preset_is_still_listed_and_says_what_beat_it() {
 }
 
 #[test]
+fn a_shadowed_preset_says_what_you_overrode_not_just_that_you_did() {
+    let dir = repo();
+    let shipped = stdout(flow(dir.path()).arg("presets"));
+    let overridden = row_for(&shipped, "main-flow")
+        .split_whitespace()
+        .last()
+        .unwrap()
+        .to_string();
+    write_preset(
+        &dir.path().join(".flow/presets"),
+        "main-flow",
+        "The project's own.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    // Knowing that you overrode something is only half of knowing what.
+    let shadow = out
+        .lines()
+        .find(|line| line.to_lowercase().contains("shadow"))
+        .unwrap();
+    assert!(
+        shadow.contains(&overridden),
+        "the shadowed description is nowhere: {shadow}"
+    );
+}
+
+#[test]
 fn the_default_marker_and_the_footer_survive() {
     let dir = repo();
     let out = stdout(flow(dir.path()).arg("presets"));

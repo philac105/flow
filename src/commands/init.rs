@@ -29,10 +29,10 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
     // your other preferences (ADR-0007).
     let (user, _) = crate::config::UserConfig::load()?;
     let (chosen, asked_by) = match preset {
-        Some(name) => (name.to_string(), Asked::Argv),
+        Some(name) => (name.to_string(), Asked::Outright),
         None if !user.preset.is_empty() => (user.preset.clone(), Asked::UserConfig),
         // A named flow, deliberately, rather than whichever file sorts first.
-        None => (crate::presets::DEFAULT.to_string(), Asked::Default),
+        None => (crate::presets::DEFAULT.to_string(), Asked::Outright),
     };
     // Before anything is written: a name that resolves to nothing must leave
     // the repo exactly as it found it.
@@ -77,13 +77,13 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Where the name came from, which is what makes the error message when it
-/// resolves to nothing worth reading.
+/// Where the name came from — the two cases that need different words when it
+/// resolves to nothing. A name you typed and the pinned default are the same
+/// case: the message names the name, and that is all either needs.
 #[derive(Clone, Copy)]
 enum Asked {
-    Argv,
+    Outright,
     UserConfig,
-    Default,
 }
 
 /// A preset's name, resolved through the Preset Path, or a path to a flow you
@@ -119,7 +119,7 @@ fn resolve_preset(root: &Path, chosen: &str, asked_by: Asked) -> Result<(String,
             "your user config sets `preset = \"{chosen}\"`, but no preset or file is called \
              that — presets on your path: {available}. See `flow presets`."
         ),
-        Asked::Argv | Asked::Default => anyhow!(
+        Asked::Outright => anyhow!(
             "no preset or file called `{chosen}` — presets on your path: {available}. \
              See `flow presets`."
         ),
