@@ -31,11 +31,11 @@ struct Cli {
 enum Command {
     /// Write a flow and the agent adapter into this repo
     Init {
-        /// A built-in flow, or a path to one of your own. It becomes yours.
+        /// A preset's name, or a path to a flow of your own. It becomes yours.
         #[arg(long)]
         preset: Option<String>,
     },
-    /// List the flows that ship in the binary
+    /// List every flow you can init with, and where each one came from
     Presets,
     /// Begin a new run through the flow
     ///

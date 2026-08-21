@@ -12,7 +12,7 @@ use std::path::PathBuf;
 pub struct UserConfig {
     #[serde(default)]
     pub agent: String,
-    /// Which built-in flow a bare `flow init` writes.
+    /// The name of the preset a bare `flow init` resolves and writes.
     #[serde(default)]
     pub preset: String,
     #[serde(default)]

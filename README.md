@@ -159,19 +159,35 @@ inside `.flow/`.
 ## Pick a flow, or write one
 
 ```bash
-flow presets                      # what ships in the binary
+flow presets                      # every flow you can init with, and where each came from
 flow init --preset bugfix
-flow init --preset ./mine.toml    # one you wrote
+flow init --preset ./mine.toml    # a one-off, read exactly as you wrote it
 ```
+
+`flow presets` reads each description out of the file that declares it, so it is
+the list — this README does not keep a second copy to drift against.
+
+Presets are found on the **Preset Path**, nearest owner first:
 
 | | |
 |---|---|
-| `main-flow` | grill → spec → tickets → implement → review. Uses an issue tracker. |
-| `minimal` | shape → build → check. Three stages, nothing to install. |
-| `bugfix` | reproduce → diagnose → fix → verify. Prove it is broken before touching it. |
+| `<repo>/.flow/presets/` | the project's — and every ancestor's, so a monorepo can standardise what its packages reach for |
+| `~/.config/flow/presets/` | yours, on this machine (`$XDG_CONFIG_HOME` if you set it) |
+| embedded in the binary | what ships with `flow` |
 
-`main-flow` is what a bare `flow init` writes; set `preset = "minimal"` in your
-user config to change that everywhere.
+A nearer preset **shadows** a farther one of the same name, whole file for whole
+file — no merging. The shadowed one still appears in `flow presets`, marked, so
+you can see what beat it.
+
+Adding a flow of your own is dropping a `.toml` into one of those two
+directories, with the filename matching the `name` declared inside it. `flow
+config` prints both paths, including the ones that do not exist yet. `flow` only
+ever **reads** them and never writes to them, so nothing it does can clobber a
+flow you wrote.
+
+`main-flow` is what a bare `flow init` writes, resolved by name through the same
+path — so if you write your own `main-flow`, a bare `flow init` writes yours.
+Set `preset = "minimal"` in your user config to change which name that is.
 
 ## The flow is yours
 
@@ -241,10 +257,14 @@ reasoning for each is in [`docs/adr/`](./docs/adr/).
 ## Development
 
 ```bash
-cargo test    # 46 integration tests, all driving the real binary
+cargo test    # 109 integration tests, all driving the real binary
 ```
 
 There is one seam: the CLI. Tests run the compiled binary against a temp
 directory and assert on exit codes, stdout, and the files left behind. State
 crossing a process boundary is the property the tool rests on, so tests that
 need state spend one invocation writing it and another reading it back.
+
+The one exception is the rule that a preset's filename stem must equal the
+`name` it declares, which is unit-tested directly — the build script enforces it
+fatally, and a failed build cannot be reached through the CLI.
