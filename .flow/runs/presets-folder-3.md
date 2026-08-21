@@ -3,9 +3,9 @@ slug = "presets-folder-3"
 title = "presets-folder-3"
 kind = "feature"
 flow = "main-flow"
-status = "active"
+status = "finished"
 created = "2026-08-21T00:01:10.922Z"
-updated = "2026-08-21T14:36:18.640Z"
+updated = "2026-08-21T14:40:06.968Z"
 
 [[stage]]
 name = "grill"
@@ -42,17 +42,7 @@ completed = "2026-08-21T14:36:18.640Z"
 
 ## Where we are
 
-`review` done — every stage settled
-
-Review is done and issue #11 is closed. Six review findings landed in two commits on build-flow.
-
-08ac27c fixes four things the review found plus housekeeping. (1) A relative --root climbed the shell's working directory instead of the root's ancestry: project_dirs walks with parent(), and the parent of a relative path is the empty path, which then resolves against the cwd — 'flow --root ../target init --preset leak' wrote another repo's preset into the target and reported it as the target's own, and '--root .' read one directory twice and printed a preset shadowing itself. main::resolve_dir now canonicalises the root once (falling back to a lexical absolute+normalise when the directory does not exist yet), which fixes find_root's identical exposure too. (2) build.rs only ever ran preset_name::check, so 'the build script already refused to publish a preset that fails these checks' in preset_path::candidates was untrue: a shipped preset with no stages built fine and made every command fail. build.rs now checks stages. (3) 'flow presets' was silent when the default resolved to nothing — every row unmarked and a footer explaining a '*' that was not there — and now names the missing preset. (4) preset_name's 'declares no name' branch was unreachable from discovery because Flow::name has no serde default, so parse() now reads name off the toml::Table the way build.rs does, before deserialising. Plus .idea/ and .vscode/ in .gitignore and the README test count.
-
-d264a03 is a deliberate design change, decided with the user, and it amends ADR-0008. The project walk had no upper bound: any .flow/presets/ up to / supplied presets that beat what ships. A preset is not inert data — it carries the launcher argv 'flow go' spawns — so /tmp/.flow/presets/main-flow.toml on a shared box changed what a bare 'flow init' wrote for every repo beneath it, indistinguishable from the repo's own; it also made this suite depend on what sat in /tmp. preset_path::ceiling now stops the walk at the OUTERMOST .git above the start (outermost, so a monorepo root is reached and a submodule does not truncate it), or at $HOME, whichever is farther (so ~/work/.flow/presets still covers the repos under it), or at the starting directory when neither is on the ancestry. tests/cli.rs's flow_from now sets HOME alongside XDG_CONFIG_HOME — without it the walk stops at the test's own root and every ancestor test would have nowhere to put a preset. If you change the ceiling, that helper is the thing that will bite you.
-
-State: 115 integration + 4 unit tests green, cargo fmt --check and cargo clippy --all-targets clean, release build clean. Branch build-flow is ahead of main and has never been pushed or PR'd — that is the only thing left on this work.
-
-Two findings were considered and NOT actioned, and were already recorded once: 'flow config' prints ancestor preset dirs only when they exist, and Layer has no CONTEXT.md entry. Do not re-litigate either without a new reason.
+Run finished.
 
 ## Log
 
@@ -109,3 +99,5 @@ d264a03 is a deliberate design change, decided with the user, and it amends ADR-
 State: 115 integration + 4 unit tests green, cargo fmt --check and cargo clippy --all-targets clean, release build clean. Branch build-flow is ahead of main and has never been pushed or PR'd — that is the only thing left on this work.
 
 Two findings were considered and NOT actioned, and were already recorded once: 'flow config' prints ancestor preset dirs only when they exist, and Layer has no CONTEXT.md entry. Do not re-litigate either without a new reason.
+
+### 2026-08-21T14:40:06Z — Run finished.
