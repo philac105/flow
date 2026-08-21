@@ -8,6 +8,27 @@ const ADAPTER_SKILL: &str = include_str!("../../assets/adapter-skill.md");
 const BLOCK_START: &str = "<!-- flow:start -->";
 const BLOCK_END: &str = "<!-- flow:end -->";
 
+/// The gitignore `init` drops inside `.flow/`, so keeping Flow's state out of
+/// a repo never means editing the repo's own. It settles the two things that
+/// are not the user's call, and *presents* the two that are rather than
+/// deciding them quietly — see ADR-0009.
+const FLOW_GITIGNORE: &str = "\
+# Which run you are working on — local to your checkout.
+/current
+
+# The board `flow board` writes. Generated from the run files, so any fresh
+# `flow board` rebuilds it; `--output` puts it somewhere else if you want a
+# copy that stays.
+/board.html
+
+# Runs and artifacts are committed by default. A handoff is written for
+# someone who has never seen the work — usually in another session, often on
+# another machine — and a clone with neither of these starts blank. Uncomment
+# either if you would rather it stayed in your checkout.
+# /runs/
+# /artifacts/
+";
+
 const AGENTS_BLOCK: &str = r#"## Flow
 
 This repo tracks work with `flow`. Run `flow status` to see every run and the
@@ -39,12 +60,6 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
     let (contents, origin) = resolve_preset(root, &chosen, asked_by)?;
 
     std::fs::create_dir_all(runs_dir(root))?;
-    // Which run you are on is yours, like a checked-out branch. A gitignore
-    // inside .flow keeps it local without touching the repo's own.
-    std::fs::write(
-        crate::flow::flow_dir(root).join(".gitignore"),
-        "# Which run you are working on — local to your checkout.\n/current\n",
-    )?;
 
     let path = flow_path(root);
     if path.exists() {
@@ -52,6 +67,17 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
     } else {
         std::fs::write(&path, &contents)?;
         println!("wrote {}   ({origin})", rel(root, &path));
+    }
+
+    // Two of its lines are an invitation to edit, so this is a file someone
+    // has an answer in. Overwriting it would revert that answer without
+    // saying so, which is not what ADR-0004 means by idempotent.
+    let ignore = crate::flow::flow_dir(root).join(".gitignore");
+    if ignore.exists() {
+        println!("  kept {} (already yours)", rel(root, &ignore));
+    } else {
+        std::fs::write(&ignore, FLOW_GITIGNORE)?;
+        println!("wrote {}", rel(root, &ignore));
     }
 
     let skill = root.join(".claude/skills/flow/SKILL.md");

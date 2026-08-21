@@ -1,2 +1,14 @@
 # Which run you are working on — local to your checkout.
 /current
+
+# The board `flow board` writes. Generated from the run files, so any fresh
+# `flow board` rebuilds it; `--output` puts it somewhere else if you want a
+# copy that stays.
+/board.html
+
+# Runs and artifacts are committed by default. A handoff is written for
+# someone who has never seen the work — usually in another session, often on
+# another machine — and a clone with neither of these starts blank. Uncomment
+# either if you would rather it stayed in your checkout.
+# /runs/
+# /artifacts/

@@ -11,7 +11,7 @@ description = "Reproduce, diagnose, fix, verify."
 name = "reproduce"
 description = "Get it failing on demand. A failing test is the best form of this."
 command = "/tdd"
-artifact = ".flow/notes/{slug}.md"
+artifact = ".flow/artifacts/{slug}/reproduce.md"
 optional = false
 repeatable = true
 

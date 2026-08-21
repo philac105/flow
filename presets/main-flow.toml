@@ -26,7 +26,7 @@ description = "The idea → ship spine, in order."
 name = "grill"
 description = "Interview until the plan is sharp. Produces decisions, a glossary and ADRs."
 command = "/grill-with-docs"
-artifact = ".scratch/{slug}/grill.md"
+artifact = ".flow/artifacts/{slug}/grill.md"
 optional = false
 repeatable = false
 

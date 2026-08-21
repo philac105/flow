@@ -199,7 +199,7 @@ fn next_prints_the_stage_and_its_command_without_running_it() {
     assert!(out.contains("grill"));
     assert!(out.contains("/grill-with-docs"));
     // The command is shown, never executed: nothing it would produce appears.
-    assert!(!dir.path().join(".scratch").exists());
+    assert!(!dir.path().join(".flow/artifacts").exists());
 }
 
 #[test]
@@ -363,10 +363,14 @@ fn finished_runs_are_hidden_until_asked_for() {
 #[test]
 fn a_stage_whose_artifact_exists_while_it_reads_pending_is_drift() {
     let dir = repo_with_run();
-    // The grill stage declares `.scratch/{slug}/grill.md`. A session that died
+    // The grill stage declares `.flow/artifacts/{slug}/grill.md`. A session that died
     // after writing it but before recording leaves exactly this shape.
-    std::fs::create_dir_all(dir.path().join(".scratch/auth-rework")).unwrap();
-    std::fs::write(dir.path().join(".scratch/auth-rework/grill.md"), "notes").unwrap();
+    std::fs::create_dir_all(dir.path().join(".flow/artifacts/auth-rework")).unwrap();
+    std::fs::write(
+        dir.path().join(".flow/artifacts/auth-rework/grill.md"),
+        "notes",
+    )
+    .unwrap();
 
     let out = stdout(flow(dir.path()).arg("next"));
     assert!(out.contains("drift"), "expected drift in:\n{out}");
@@ -396,8 +400,12 @@ fn a_done_stage_whose_artifact_vanished_is_drift() {
 #[test]
 fn drift_is_reported_and_never_silently_corrected() {
     let dir = repo_with_run();
-    std::fs::create_dir_all(dir.path().join(".scratch/auth-rework")).unwrap();
-    std::fs::write(dir.path().join(".scratch/auth-rework/grill.md"), "notes").unwrap();
+    std::fs::create_dir_all(dir.path().join(".flow/artifacts/auth-rework")).unwrap();
+    std::fs::write(
+        dir.path().join(".flow/artifacts/auth-rework/grill.md"),
+        "notes",
+    )
+    .unwrap();
 
     flow(dir.path()).arg("status").assert().success();
     flow(dir.path()).arg("next").assert().success();
@@ -413,8 +421,12 @@ fn tracker_artifacts_are_never_checked_against_the_filesystem() {
     let dir = repo_with_run();
     // Satisfy grill's file artifact so the only artifact left in play is
     // spec's `tracker:issue`, which lives somewhere no filesystem can see.
-    std::fs::create_dir_all(dir.path().join(".scratch/auth-rework")).unwrap();
-    std::fs::write(dir.path().join(".scratch/auth-rework/grill.md"), "notes").unwrap();
+    std::fs::create_dir_all(dir.path().join(".flow/artifacts/auth-rework")).unwrap();
+    std::fs::write(
+        dir.path().join(".flow/artifacts/auth-rework/grill.md"),
+        "notes",
+    )
+    .unwrap();
     flow(dir.path())
         .args(["done", "-m", "note"])
         .assert()
@@ -447,7 +459,10 @@ fn a_stage_completed_without_its_declared_artifact_is_drift() {
 fn the_artifact_template_resolves_the_run_slug() {
     let dir = repo_with_run();
     let out = stdout(flow(dir.path()).arg("next"));
-    assert!(out.contains(".scratch/auth-rework/grill.md"), "got:\n{out}");
+    assert!(
+        out.contains(".flow/artifacts/auth-rework/grill.md"),
+        "got:\n{out}"
+    );
 }
 
 // --- ticket 06: skip, back and finish --------------------------------------
@@ -642,8 +657,12 @@ fn run_titles_are_html_escaped() {
 #[test]
 fn the_board_shows_drift() {
     let dir = repo_with_run();
-    std::fs::create_dir_all(dir.path().join(".scratch/auth-rework")).unwrap();
-    std::fs::write(dir.path().join(".scratch/auth-rework/grill.md"), "notes").unwrap();
+    std::fs::create_dir_all(dir.path().join(".flow/artifacts/auth-rework")).unwrap();
+    std::fs::write(
+        dir.path().join(".flow/artifacts/auth-rework/grill.md"),
+        "notes",
+    )
+    .unwrap();
     flow(dir.path()).arg("board").assert().success();
 
     assert!(read(dir.path(), ".flow/board.html").contains("class=\"drift\""));
@@ -771,15 +790,19 @@ fn a_run_survives_being_read_by_a_process_that_never_wrote_it() {
 #[test]
 fn deliberately_reopening_a_stage_is_not_reported_as_a_dead_session() {
     let dir = repo_with_run();
-    std::fs::create_dir_all(dir.path().join(".scratch/auth-rework")).unwrap();
-    std::fs::write(dir.path().join(".scratch/auth-rework/grill.md"), "notes").unwrap();
+    std::fs::create_dir_all(dir.path().join(".flow/artifacts/auth-rework")).unwrap();
+    std::fs::write(
+        dir.path().join(".flow/artifacts/auth-rework/grill.md"),
+        "notes",
+    )
+    .unwrap();
     flow(dir.path())
         .args([
             "done",
             "-m",
             "grilled",
             "--artifact",
-            ".scratch/auth-rework/grill.md",
+            ".flow/artifacts/auth-rework/grill.md",
         ])
         .assert()
         .success();
@@ -921,7 +944,7 @@ fn go_launches_the_configured_agent_with_the_assembled_prompt() {
     // And it carries the handoff and how to record.
     assert!(prompt.contains("## Where we are"));
     assert!(prompt.contains("flow done auth-rework -m"));
-    assert!(prompt.contains("--artifact .scratch/auth-rework/grill.md"));
+    assert!(prompt.contains("--artifact .flow/artifacts/auth-rework/grill.md"));
 }
 
 #[test]
@@ -1025,7 +1048,7 @@ fn go_reports_an_artifact_that_appeared_while_the_agent_had_it() {
     let dir = repo_with_run();
     with_fake_agent(
         dir.path(),
-        "mkdir -p .scratch/auth-rework; echo notes > .scratch/auth-rework/grill.md",
+        "mkdir -p .flow/artifacts/auth-rework; echo notes > .flow/artifacts/auth-rework/grill.md",
     );
 
     let out = stdout(flow(dir.path()).arg("go").env_remove("CLAUDECODE"));
@@ -1332,6 +1355,33 @@ fn the_current_pointer_stays_out_of_the_repo() {
     let dir = repo();
     let ignore = read(dir.path(), ".flow/.gitignore");
     assert!(ignore.contains("/current"));
+}
+
+#[test]
+fn the_generated_board_is_ignored_and_runs_are_offered_rather_than_ignored() {
+    let dir = repo();
+    let ignore = read(dir.path(), ".flow/.gitignore");
+
+    // Generated from the run files, so committing it is churn with no reader.
+    assert!(ignore.lines().any(|l| l.trim() == "/board.html"));
+    // Runs and artifacts are the user's call, so they are presented commented
+    // out rather than decided either way — ADR-0009.
+    assert!(ignore.lines().any(|l| l.trim() == "# /runs/"));
+    assert!(ignore.lines().any(|l| l.trim() == "# /artifacts/"));
+}
+
+#[test]
+fn init_never_clobbers_an_answered_gitignore() {
+    let dir = repo();
+    // The answer someone gives by uncommenting a line must survive the next
+    // `init`, or the invitation to edit it was not honest.
+    let answered = read(dir.path(), ".flow/.gitignore").replace("# /runs/", "/runs/");
+    std::fs::write(dir.path().join(".flow/.gitignore"), &answered).unwrap();
+
+    let out = stdout(flow(dir.path()).arg("init"));
+
+    assert_eq!(read(dir.path(), ".flow/.gitignore"), answered);
+    assert!(out.contains("kept .flow/.gitignore"), "got:\n{out}");
 }
 
 #[test]
