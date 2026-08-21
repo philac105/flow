@@ -5,7 +5,7 @@ kind = "feature"
 flow = "main-flow"
 status = "active"
 created = "2026-08-21T00:01:10.922Z"
-updated = "2026-08-21T00:23:58.451Z"
+updated = "2026-08-21T14:18:19.616Z"
 
 [[stage]]
 name = "grill"
@@ -29,23 +29,27 @@ completed = "2026-08-21T00:23:58.451Z"
 
 [[stage]]
 name = "implement"
-status = "in_progress"
+status = "done"
 started = "2026-08-21T00:23:58.451Z"
+completed = "2026-08-21T14:18:19.616Z"
 
 [[stage]]
 name = "review"
-status = "pending"
+status = "in_progress"
+started = "2026-08-21T14:18:19.616Z"
 +++
 
 ## Where we are
 
-`tickets` done → `implement`
+`implement` done → `review`
 
-Issue #11 is broken into six tickets on GitHub, all labelled ready-for-agent and wired with native GitHub blocking dependencies (verified via issue_dependencies_summary). #11 itself was not modified; each ticket names it under a Parent heading.
+All six tickets for issue #11 are landed, closed on GitHub, and committed on build-flow. Presets are no longer a hardcoded Rust list: they are discovered on the Preset Path — project (.flow/presets/ in the repo and every ancestor of it, nearest first), then user ($XDG_CONFIG_HOME/flow/presets/), then shipped (embedded by build.rs from presets/ at the repo root).
 
-The chain: #12 (no blockers) moves the three flow files from assets/ to presets/ at the repo root, adds the build.rs that generates the embedded set from that directory, deletes the name/description tuple array in init.rs, and lands the shared stem-equals-name function — unit-tested directly, fatal in the build script. It also converts every_built_in_preset_actually_works to iterate the generated set. #13 (blocked by #12) builds the discovery module and rewrites flow presets: three layers project -> user -> shipped, the project layer unioning every ancestor rather than reusing find_root's nearest-.flow search, a source column, and shadowed entries still listed and marked. presets() starts taking a root here. #14, #15 and #16 all hang off #13 and can run in parallel: #14 adds skip-with-reasons (four reasons, non-.toml silently ignored), #15 makes init resolve the name main-flow through the Path with a source line and a hard error for a default that resolves to nothing, #16 makes flow config print the preset directories. #17 (blocked by #14, #15, #16) replaces the README's hand-written preset table with a pointer to flow presets.
+The code: src/preset_path.rs is the new module that owns the Path and is deliberately NOT unit-tested — the CLI is the seam, and tests/cli.rs covers every behaviour through 'flow presets', 'flow init' and 'flow config'. The one unit-tested seam is src/preset_name.rs, the stem-equals-name rule, shared by build.rs (fatal) and discovery (skip with a reason). src/flow.rs is untouched: the ancestor walk is a second traversal, because find_root stops at the first .flow and would blind a package that has already run init to the repo root's menu. 'flow presets' lists every layer with a source column, keeps shadowed entries visible with the description of what was overridden, and has a Skipped section with four reasons. 'flow init' resolves a name (including the pinned default main-flow) through the Path, names the layer and for a project preset the ancestor, and hard-errors rather than falling back. 'flow config' prints the preset directories. README points at 'flow presets' instead of listing them.
 
-Granularity was confirmed with the user: #13 and #14 stay split rather than building the whole resolved/shadowed/skipped shape at once, and #17 stays its own ticket rather than folding into #15. The discovery module is deliberately not unit-tested — that decision is restated inside #13 so an implementer does not add a seam the spec rejected. Next stage is implement; start at #12, which is the only unblocked ticket.
+Reviewed on both axes (/code-review, standards + spec). Four findings fixed in 871b014: the listing header claimed 'nearest owner first' while rows are alphabetical (that is the precedence rule, not the row order); a shadowed entry showed only its layer, not what you had overridden; a 4-tuple that was really a Preset; and Asked having three variants for two messages. Two findings were deliberately NOT actioned and a later session should not re-litigate them without a reason: 'flow config' prints ancestor preset dirs only when they exist (printing every directory up to / would be noise, and the nearest one IS marked when absent), and Layer has no CONTEXT.md entry (the Preset Path entry already names project/user/shipped).
+
+State: 110 integration + 4 unit tests green, cargo fmt --check and cargo clippy --all-targets clean, release build clean. Parent spec #11 is still OPEN on purpose — closing it is the review stage's call. Note for whoever picks this up: .idea/ is untracked and not in .gitignore, so it is one 'git add -A' away from being committed.
 
 ## Log
 
@@ -80,3 +84,13 @@ Issue #11 is broken into six tickets on GitHub, all labelled ready-for-agent and
 The chain: #12 (no blockers) moves the three flow files from assets/ to presets/ at the repo root, adds the build.rs that generates the embedded set from that directory, deletes the name/description tuple array in init.rs, and lands the shared stem-equals-name function — unit-tested directly, fatal in the build script. It also converts every_built_in_preset_actually_works to iterate the generated set. #13 (blocked by #12) builds the discovery module and rewrites flow presets: three layers project -> user -> shipped, the project layer unioning every ancestor rather than reusing find_root's nearest-.flow search, a source column, and shadowed entries still listed and marked. presets() starts taking a root here. #14, #15 and #16 all hang off #13 and can run in parallel: #14 adds skip-with-reasons (four reasons, non-.toml silently ignored), #15 makes init resolve the name main-flow through the Path with a source line and a hard error for a default that resolves to nothing, #16 makes flow config print the preset directories. #17 (blocked by #14, #15, #16) replaces the README's hand-written preset table with a pointer to flow presets.
 
 Granularity was confirmed with the user: #13 and #14 stay split rather than building the whole resolved/shadowed/skipped shape at once, and #17 stays its own ticket rather than folding into #15. The discovery module is deliberately not unit-tested — that decision is restated inside #13 so an implementer does not add a seam the spec rejected. Next stage is implement; start at #12, which is the only unblocked ticket.
+
+### 2026-08-21T14:18:19Z — `implement` done → `review`
+
+All six tickets for issue #11 are landed, closed on GitHub, and committed on build-flow. Presets are no longer a hardcoded Rust list: they are discovered on the Preset Path — project (.flow/presets/ in the repo and every ancestor of it, nearest first), then user ($XDG_CONFIG_HOME/flow/presets/), then shipped (embedded by build.rs from presets/ at the repo root).
+
+The code: src/preset_path.rs is the new module that owns the Path and is deliberately NOT unit-tested — the CLI is the seam, and tests/cli.rs covers every behaviour through 'flow presets', 'flow init' and 'flow config'. The one unit-tested seam is src/preset_name.rs, the stem-equals-name rule, shared by build.rs (fatal) and discovery (skip with a reason). src/flow.rs is untouched: the ancestor walk is a second traversal, because find_root stops at the first .flow and would blind a package that has already run init to the repo root's menu. 'flow presets' lists every layer with a source column, keeps shadowed entries visible with the description of what was overridden, and has a Skipped section with four reasons. 'flow init' resolves a name (including the pinned default main-flow) through the Path, names the layer and for a project preset the ancestor, and hard-errors rather than falling back. 'flow config' prints the preset directories. README points at 'flow presets' instead of listing them.
+
+Reviewed on both axes (/code-review, standards + spec). Four findings fixed in 871b014: the listing header claimed 'nearest owner first' while rows are alphabetical (that is the precedence rule, not the row order); a shadowed entry showed only its layer, not what you had overridden; a 4-tuple that was really a Preset; and Asked having three variants for two messages. Two findings were deliberately NOT actioned and a later session should not re-litigate them without a reason: 'flow config' prints ancestor preset dirs only when they exist (printing every directory up to / would be noise, and the nearest one IS marked when absent), and Layer has no CONTEXT.md entry (the Preset Path entry already names project/user/shipped).
+
+State: 110 integration + 4 unit tests green, cargo fmt --check and cargo clippy --all-targets clean, release build clean. Parent spec #11 is still OPEN on purpose — closing it is the review stage's call. Note for whoever picks this up: .idea/ is untracked and not in .gitignore, so it is one 'git add -A' away from being committed.
