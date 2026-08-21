@@ -1,0 +1,32 @@
+# The flow this repo follows. This file is yours — edit it.
+#
+# `flow next` prints a stage's `command` and never runs it. `flow go` hands it
+# to your agent with the prompt already assembled.
+#
+# Three stages, no issue tracker, nothing to install. A good starting point if
+# you are not sure what your process is yet — add stages when you miss them.
+
+name = "minimal"
+description = "Shape it, build it, check it."
+
+[[stage]]
+name = "shape"
+description = "Work out what to build and why, until you could explain it to someone else."
+command = "/grill-me"
+artifact = ".flow/notes/{slug}.md"
+optional = false
+repeatable = true
+
+[[stage]]
+name = "build"
+description = "Build it. Test what is worth testing."
+command = "/implement"
+optional = false
+repeatable = true
+
+[[stage]]
+name = "check"
+description = "Read the diff as if someone else wrote it."
+command = "/code-review"
+optional = false
+repeatable = true

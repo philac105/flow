@@ -1,0 +1,37 @@
+# The flow this repo follows. This file is yours — edit it.
+#
+# For defects rather than features: the point is to prove the bug exists before
+# touching it, and prove it is gone afterwards. Reproducing first is what stops
+# an agent confidently fixing something that was never broken.
+
+name = "bugfix"
+description = "Reproduce, diagnose, fix, verify."
+
+[[stage]]
+name = "reproduce"
+description = "Get it failing on demand. A failing test is the best form of this."
+command = "/tdd"
+artifact = ".flow/notes/{slug}.md"
+optional = false
+repeatable = true
+
+[[stage]]
+name = "diagnose"
+description = "Find the actual cause, not the first plausible one."
+command = "/diagnosing-bugs"
+optional = false
+repeatable = true
+
+[[stage]]
+name = "fix"
+description = "Make the smallest change that makes the reproduction pass."
+command = "/implement"
+optional = false
+repeatable = true
+
+[[stage]]
+name = "verify"
+description = "Confirm it is fixed, and that nothing near it broke."
+command = "/code-review"
+optional = false
+repeatable = true
