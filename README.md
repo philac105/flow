@@ -257,7 +257,7 @@ reasoning for each is in [`docs/adr/`](./docs/adr/).
 ## Development
 
 ```bash
-cargo test    # 109 integration tests, all driving the real binary
+cargo test    # 113 integration tests, all driving the real binary
 ```
 
 There is one seam: the CLI. Tests run the compiled binary against a temp

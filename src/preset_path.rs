@@ -117,6 +117,10 @@ pub fn discover(start: &Path) -> Discovered {
 /// `.flow`, so a package that has already run `init` would never see the repo
 /// root's menu — gutting the only case the project layer exists for. This is a
 /// second traversal of the same ancestry, and `find_root` keeps its behaviour.
+///
+/// `start` is expected absolute: the parent of a relative path is the empty
+/// path, which reads as the process's working directory. `main` resolves it
+/// once, for this walk and for `find_root` alike.
 pub fn project_dirs(start: &Path) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     let mut cur = Some(start);
@@ -202,16 +206,21 @@ fn read_dir(dir: &Path, layer: &Layer, found: &mut Vec<Preset>, skipped: &mut Ve
 fn parse(stem: &str, text: &str) -> Result<Flow, String> {
     // Told apart deliberately: TOML that will not lex is a different mistake
     // from TOML that lexes into something that is not a flow.
-    text.parse::<toml::Table>()
+    let table = text
+        .parse::<toml::Table>()
         .map_err(|e| format!("is not valid TOML: {}", one_line(&e.to_string())))?;
+    // The runtime half of the rule the build script enforces fatally: we
+    // control what ships, but a user's directory is theirs. Read off the table
+    // the way the build script reads it, and before the flow is deserialised —
+    // a missing `name` is a mistake with a name of its own, not a serde
+    // complaint about a missing field.
+    let declared = table.get("name").and_then(|value| value.as_str());
+    crate::preset_name::check(stem, declared.unwrap_or_default())?;
     let flow: Flow = toml::from_str(text)
         .map_err(|e| format!("does not read as a flow: {}", one_line(&e.to_string())))?;
     if flow.stages.is_empty() {
         return Err("declares no stages".to_string());
     }
-    // The runtime half of the rule the build script enforces fatally: we
-    // control what ships, but a user's directory is theirs.
-    crate::preset_name::check(stem, &flow.name)?;
     Ok(flow)
 }
 

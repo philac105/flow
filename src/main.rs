@@ -137,12 +137,37 @@ fn main() {
     }
 }
 
+/// The directory a command acts on, absolute and with no `.` or `..` left in
+/// it. Both the `.flow` search and the preset walk climb it with `parent()`,
+/// and the parent of a relative path is the empty path — which reads as the
+/// process's working directory, so a relative `--root` would otherwise climb
+/// the wrong ancestry entirely and offer an unrelated repo's presets.
+fn resolve_dir(dir: PathBuf) -> Result<PathBuf> {
+    // Almost always it exists, and canonicalising settles symlinks too; a
+    // `flow init` into a directory that is not there yet falls back to
+    // normalising the path by hand.
+    if let Ok(real) = dir.canonicalize() {
+        return Ok(real);
+    }
+    let mut out = PathBuf::new();
+    for part in std::path::absolute(&dir)?.components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    Ok(out)
+}
+
 fn run() -> Result<()> {
     let cli = Cli::parse();
-    let cwd = match cli.root.clone() {
+    let cwd = resolve_dir(match cli.root.clone() {
         Some(root) => root,
         None => std::env::current_dir()?,
-    };
+    })?;
 
     // `init` writes where it is told; everything else searches upward for a
     // `.flow`, so the commands work from anywhere inside the repo.

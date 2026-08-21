@@ -62,6 +62,16 @@ fn main() {
         if let Err(reason) = preset_name::check(stem, name) {
             panic!("{}: {reason}", path.display());
         }
+        // The other half of what makes a preset usable. Discovery skips an
+        // on-disk preset that declares no stages; a shipped one has to fail
+        // here instead, because nothing downstream checks what we embed.
+        if flow
+            .get("stage")
+            .and_then(|value| value.as_array())
+            .is_none_or(|stages| stages.is_empty())
+        {
+            panic!("{}: declares no stages", path.display());
+        }
 
         writeln!(
             generated,

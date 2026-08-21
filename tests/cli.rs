@@ -1684,9 +1684,9 @@ fn row_for<'a>(out: &'a str, name: &str) -> &'a str {
 
 // --- ticket 14: a bad preset is skipped, never fatal ------------------------
 
-/// The four ways a file in a presets directory fails to be a preset, each in
+/// The five ways a file in a presets directory fails to be a preset, each in
 /// its own file so one run of `flow presets` reports all of them.
-fn write_the_four_bad_presets(dir: &Path) {
+fn write_the_bad_presets(dir: &Path) {
     std::fs::create_dir_all(dir).unwrap();
     std::fs::write(dir.join("garbled.toml"), "this is not = = toml\n").unwrap();
     std::fs::write(
@@ -1702,6 +1702,11 @@ fn write_the_four_bad_presets(dir: &Path) {
     std::fs::write(
         dir.join("misnamed.toml"),
         "name = \"something-else\"\n\n[[stage]]\nname = \"do\"\ncommand = \"/do\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("nameless.toml"),
+        "description = \"Forgot the name.\"\n\n[[stage]]\nname = \"do\"\ncommand = \"/do\"\n",
     )
     .unwrap();
 }
@@ -1733,7 +1738,7 @@ fn a_malformed_preset_is_skipped_with_a_reason_and_presets_still_works() {
 #[test]
 fn a_repo_still_initialises_with_a_broken_preset_sitting_in_the_tree() {
     let outer = TempDir::new().unwrap();
-    write_the_four_bad_presets(&outer.path().join(".flow/presets"));
+    write_the_bad_presets(&outer.path().join(".flow/presets"));
     let pkg = outer.path().join("packages/api");
     std::fs::create_dir_all(&pkg).unwrap();
 
@@ -1745,7 +1750,7 @@ fn a_repo_still_initialises_with_a_broken_preset_sitting_in_the_tree() {
 #[test]
 fn each_reason_a_preset_is_skipped_for_is_reported_distinguishably() {
     let dir = repo();
-    write_the_four_bad_presets(&dir.path().join(".flow/presets"));
+    write_the_bad_presets(&dir.path().join(".flow/presets"));
 
     let out = stdout(flow(dir.path()).arg("presets"));
 
@@ -1755,7 +1760,7 @@ fn each_reason_a_preset_is_skipped_for_is_reported_distinguishably() {
             .unwrap_or_else(|| panic!("no line for {file}:\n{out}"))
             .to_string()
     };
-    let reasons: Vec<String> = ["garbled", "notaflow", "stageless", "misnamed"]
+    let reasons: Vec<String> = ["garbled", "notaflow", "stageless", "misnamed", "nameless"]
         .iter()
         .map(|f| reason(&format!("{f}.toml")))
         .collect();
@@ -1781,6 +1786,13 @@ fn each_reason_a_preset_is_skipped_for_is_reported_distinguishably() {
         reasons[3].contains("something-else") && reasons[3].contains("misnamed"),
         "the stem mismatch does not name both values: {}",
         reasons[3]
+    );
+    // A file that never declared a `name` is told what its name has to be,
+    // rather than being handed serde's complaint about a missing field.
+    assert!(
+        reasons[4].contains("name") && reasons[4].contains("nameless"),
+        "the missing name does not say what it should have been: {}",
+        reasons[4]
     );
     for (i, a) in reasons.iter().enumerate() {
         for b in &reasons[i + 1..] {
@@ -1973,5 +1985,68 @@ fn config_names_an_ancestor_presets_directory_it_inherits_from() {
     assert!(
         out.contains(&outer.path().join(".flow/presets").display().to_string()),
         "an inherited presets directory is invisible:\n{out}"
+    );
+}
+
+// --- review: the root a command acts on -------------------------------------
+
+#[test]
+fn a_relative_root_walks_the_roots_ancestry_not_the_working_directory() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("target-repo");
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir_all(&target).unwrap();
+    write_preset(
+        &elsewhere.join(".flow/presets"),
+        "elsewhere-only",
+        "Belongs to another repo entirely.",
+    );
+
+    let mut cmd = Command::cargo_bin("flow").unwrap();
+    cmd.current_dir(&elsewhere);
+    cmd.arg("--root").arg("../target-repo");
+    cmd.env("XDG_CONFIG_HOME", dir.path().join("xdg"));
+    let out = stdout(cmd.arg("presets"));
+
+    assert!(
+        !out.contains("elsewhere-only"),
+        "the working directory's presets reached an unrelated root:\n{out}"
+    );
+}
+
+#[test]
+fn a_root_of_dot_does_not_shadow_itself() {
+    let dir = TempDir::new().unwrap();
+    write_preset(&dir.path().join(".flow/presets"), "house", "Ours.");
+
+    let mut cmd = Command::cargo_bin("flow").unwrap();
+    cmd.current_dir(dir.path());
+    cmd.arg("--root").arg(".");
+    cmd.env("XDG_CONFIG_HOME", dir.path().join("xdg"));
+    let out = stdout(cmd.arg("presets"));
+
+    assert!(
+        !out.contains("shadows"),
+        "the same directory was read twice, so a preset shadowed itself:\n{out}"
+    );
+}
+
+#[test]
+fn a_default_preset_that_resolves_to_nothing_is_said_so_in_the_listing() {
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("xdg/flow")).unwrap();
+    std::fs::write(
+        dir.path().join("xdg/flow/config.toml"),
+        "preset = \"gone\"\n",
+    )
+    .unwrap();
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    // Every row is unmarked, and this is the screen someone reads to find out
+    // why `flow init` refused — so it has to name the preset that is missing.
+    assert!(
+        out.contains("gone"),
+        "the listing says nothing about a default that resolves to nothing:\n{out}"
     );
 }

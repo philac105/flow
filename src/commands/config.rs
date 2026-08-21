@@ -93,10 +93,11 @@ const LAYER_WIDTH: usize = 9;
 /// Path, saying where each one came from.
 pub fn presets(root: &Path) -> Result<()> {
     let (user, _) = crate::config::UserConfig::load()?;
-    let default = if user.preset.is_empty() {
-        crate::presets::DEFAULT
-    } else {
+    let chosen = !user.preset.is_empty();
+    let default = if chosen {
         user.preset.as_str()
+    } else {
+        crate::presets::DEFAULT
     };
 
     let found = crate::preset_path::discover(root);
@@ -147,6 +148,22 @@ pub fn presets(root: &Path) -> Result<()> {
         println!("\nSkipped:");
         for file in &found.skipped {
             println!("    {} {}", file.path.display(), file.reason);
+        }
+    }
+
+    // A default that resolves to nothing leaves every row unmarked, and this
+    // listing is where someone comes to work out why `flow init` refused. The
+    // footer alone would explain a `*` that is not on screen.
+    if !presets.iter().any(|preset| preset.name == default) {
+        if chosen {
+            println!(
+                "\nYour user config sets `preset = \"{default}\"`, and nothing above is named \
+                 that — a bare `flow init` has nothing to write."
+            );
+        } else {
+            println!(
+                "\nNothing above is named `{default}`, so a bare `flow init` has nothing to write."
+            );
         }
     }
 
