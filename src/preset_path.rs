@@ -68,9 +68,7 @@ pub struct Discovered {
 pub struct Preset {
     pub name: String,
     pub description: String,
-    /// Read here, written out by `init` — which starts resolving through this
-    /// module in the ticket after this one.
-    #[allow(dead_code)]
+    /// The flow itself, which `init` writes out verbatim.
     pub contents: String,
     pub layer: Layer,
     /// The layers that carry this name too but were farther away, nearest

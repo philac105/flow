@@ -7,14 +7,3 @@ include!(concat!(env!("OUT_DIR"), "/shipped.rs"));
 /// What a bare `flow init` writes when nothing else is configured. A named
 /// flow, deliberately, rather than whichever file happens to sort first.
 pub const DEFAULT: &str = "main-flow";
-
-/// The shipped preset with this name, if one ships.
-pub fn shipped(name: &str) -> Option<&'static Shipped> {
-    SHIPPED.iter().find(|preset| preset.name == name)
-}
-
-/// Every shipped preset's name, for telling someone what they could have asked
-/// for instead.
-pub fn shipped_names() -> Vec<&'static str> {
-    SHIPPED.iter().map(|preset| preset.name).collect()
-}

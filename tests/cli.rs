@@ -1792,3 +1792,106 @@ fn an_absent_presets_directory_is_not_an_error() {
     flow(dir.path()).arg("presets").assert().success();
     flow(dir.path()).arg("init").assert().success();
 }
+
+// --- ticket 15: init resolves a name through the Preset Path ----------------
+
+#[test]
+fn a_preset_you_wrote_shadows_the_default_a_bare_init_writes() {
+    let dir = TempDir::new().unwrap();
+    write_preset(
+        &dir.path().join("xdg/flow/presets"),
+        "main-flow",
+        "The house spine.",
+    );
+
+    flow(dir.path()).arg("init").assert().success();
+
+    // Shadowing works for the default too, not only for an explicit choice.
+    let toml = read(dir.path(), ".flow/flow.toml");
+    assert!(
+        toml.contains("The house spine."),
+        "wrote the shipped one:\n{toml}"
+    );
+}
+
+#[test]
+fn init_writes_a_user_preset_named_on_the_command_line() {
+    let dir = TempDir::new().unwrap();
+    write_preset(&dir.path().join("xdg/flow/presets"), "spike", "Throwaway.");
+
+    flow(dir.path())
+        .args(["init", "--preset", "spike"])
+        .assert()
+        .success();
+
+    assert!(read(dir.path(), ".flow/flow.toml").contains("Throwaway."));
+}
+
+#[test]
+fn init_writes_a_preset_found_in_an_ancestor() {
+    let outer = TempDir::new().unwrap();
+    write_preset(
+        &outer.path().join(".flow/presets"),
+        "house",
+        "Every package here uses this.",
+    );
+    let pkg = outer.path().join("packages/api");
+    std::fs::create_dir_all(&pkg).unwrap();
+
+    let out = stdout(flow_from(&pkg, outer.path()).args(["init", "--preset", "house"]));
+
+    assert!(std::fs::read_to_string(pkg.join(".flow/flow.toml"))
+        .unwrap()
+        .contains("Every package here uses this."));
+    // Inheritance from a parent directory must never be invisible.
+    assert!(
+        out.contains(&outer.path().display().to_string()),
+        "init did not name the ancestor it drew from:\n{out}"
+    );
+}
+
+#[test]
+fn init_names_the_layer_the_flow_came_from() {
+    let dir = TempDir::new().unwrap();
+    let out = stdout(flow(dir.path()).arg("init"));
+    assert!(
+        out.contains("main-flow"),
+        "init did not name the flow:\n{out}"
+    );
+    assert!(
+        out.contains("shipped"),
+        "init did not name the layer:\n{out}"
+    );
+}
+
+#[test]
+fn a_configured_default_that_resolves_to_nothing_is_a_hard_error() {
+    let dir = TempDir::new().unwrap();
+    let config = dir.path().join("xdg/flow/config.toml");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    std::fs::write(&config, "preset = \"gone\"\n").unwrap();
+
+    flow(dir.path())
+        .arg("init")
+        .assert()
+        .failure()
+        // Never a silent fallback: writing a flow the user did not ask for
+        // into a file they are then told they own is the worst outcome here.
+        .stderr(predicates::str::contains("gone"))
+        .stderr(predicates::str::contains("main-flow"));
+
+    assert!(!dir.path().join(".flow/flow.toml").exists());
+}
+
+#[test]
+fn an_unknown_preset_lists_presets_from_every_layer() {
+    let dir = TempDir::new().unwrap();
+    write_preset(&dir.path().join("xdg/flow/presets"), "spike", "Throwaway.");
+
+    flow(dir.path())
+        .args(["init", "--preset", "nonsense"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("spike"))
+        .stderr(predicates::str::contains("minimal"));
+}
