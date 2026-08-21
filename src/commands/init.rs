@@ -5,26 +5,6 @@ use std::path::Path;
 
 const ADAPTER_SKILL: &str = include_str!("../../assets/adapter-skill.md");
 
-/// The flows that ship in the binary. `flow init` writes one out and then
-/// forgets about it — the repo owns its copy from that moment (ADR-0003).
-pub const PRESETS: &[(&str, &str, &str)] = &[
-    (
-        "main-flow",
-        "The idea → ship spine, in order. Five stages, uses an issue tracker.",
-        include_str!("../../assets/main-flow.toml"),
-    ),
-    (
-        "minimal",
-        "Shape it, build it, check it. Three stages, nothing to install.",
-        include_str!("../../assets/minimal.toml"),
-    ),
-    (
-        "bugfix",
-        "Reproduce, diagnose, fix, verify. For defects rather than features.",
-        include_str!("../../assets/bugfix.toml"),
-    ),
-];
-
 const BLOCK_START: &str = "<!-- flow:start -->";
 const BLOCK_END: &str = "<!-- flow:end -->";
 
@@ -48,11 +28,15 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
     // Which flow you reach for by default is a preference, so it lives with
     // your other preferences (ADR-0007).
     let (user, _) = crate::config::UserConfig::load()?;
-    let chosen = preset
-        .map(str::to_string)
-        .or_else(|| (!user.preset.is_empty()).then(|| user.preset.clone()))
-        .unwrap_or_else(|| PRESETS[0].0.to_string());
-    let contents = resolve_preset(&chosen)?;
+    let (chosen, asked_by) = match preset {
+        Some(name) => (name.to_string(), Asked::Outright),
+        None if !user.preset.is_empty() => (user.preset.clone(), Asked::UserConfig),
+        // A named flow, deliberately, rather than whichever file sorts first.
+        None => (crate::presets::DEFAULT.to_string(), Asked::Outright),
+    };
+    // Before anything is written: a name that resolves to nothing must leave
+    // the repo exactly as it found it.
+    let (contents, origin) = resolve_preset(root, &chosen, asked_by)?;
 
     std::fs::create_dir_all(runs_dir(root))?;
     // Which run you are on is yours, like a checked-out branch. A gitignore
@@ -67,7 +51,7 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
         println!("  kept {} (already yours)", rel(root, &path));
     } else {
         std::fs::write(&path, &contents)?;
-        println!("wrote {}", rel(root, &path));
+        println!("wrote {}   ({origin})", rel(root, &path));
     }
 
     let skill = root.join(".claude/skills/flow/SKILL.md");
@@ -93,21 +77,53 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// A built-in name, or a path to a flow you wrote yourself.
-fn resolve_preset(chosen: &str) -> Result<String> {
-    if let Some((_, _, contents)) = PRESETS.iter().find(|(name, _, _)| *name == chosen) {
-        return Ok((*contents).to_string());
+/// Where the name came from — the two cases that need different words when it
+/// resolves to nothing. A name you typed and the pinned default are the same
+/// case: the message names the name, and that is all either needs.
+#[derive(Clone, Copy)]
+enum Asked {
+    Outright,
+    UserConfig,
+}
+
+/// A preset's name, resolved through the Preset Path, or a path to a flow you
+/// wrote yourself. Returns the flow and where it was taken from.
+fn resolve_preset(root: &Path, chosen: &str, asked_by: Asked) -> Result<(String, String)> {
+    // The same walk the listing uses, so precedence is one rule everywhere
+    // rather than one rule per command.
+    let found = crate::preset_path::discover(root).presets;
+    if let Some(preset) = found.iter().find(|preset| preset.name == chosen) {
+        let origin = format!("{}, from {}", preset.name, preset.layer);
+        return Ok((preset.contents.clone(), origin));
     }
+
+    // A path is not a discovered preset: it is read verbatim, and the rule that
+    // a preset is named by its file does not apply to it.
     let path = Path::new(chosen);
     if path.is_file() {
-        return std::fs::read_to_string(path)
-            .map_err(|e| anyhow!("could not read {}: {e}", path.display()));
+        let contents = std::fs::read_to_string(path)
+            .map_err(|e| anyhow!("could not read {}: {e}", path.display()))?;
+        return Ok((
+            contents,
+            format!("{}, read as you wrote it", path.display()),
+        ));
     }
-    let names: Vec<&str> = PRESETS.iter().map(|(n, _, _)| *n).collect();
-    Err(anyhow!(
-        "no preset or file called `{chosen}` — built-in presets: {}. See `flow presets`.",
-        names.join(", ")
-    ))
+
+    let available = found
+        .iter()
+        .map(|preset| preset.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(match asked_by {
+        Asked::UserConfig => anyhow!(
+            "your user config sets `preset = \"{chosen}\"`, but no preset or file is called \
+             that — presets on your path: {available}. See `flow presets`."
+        ),
+        Asked::Outright => anyhow!(
+            "no preset or file called `{chosen}` — presets on your path: {available}. \
+             See `flow presets`."
+        ),
+    })
 }
 
 /// Replace the delimited flow block in place, or append one. Everything outside

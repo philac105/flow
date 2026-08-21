@@ -11,11 +11,35 @@ use std::path::Path;
 use tempfile::TempDir;
 
 fn flow(dir: &Path) -> Command {
+    flow_from(dir, dir)
+}
+
+/// `flow` run from `root`, with the user layer isolated under `owner`. The two
+/// come apart only when a test runs from a nested package and still wants the
+/// outer directory's `xdg` to be the machine's config.
+fn flow_from(root: &Path, owner: &Path) -> Command {
     let mut cmd = Command::cargo_bin("flow").unwrap();
-    cmd.arg("--root").arg(dir);
+    cmd.arg("--root").arg(root);
     // Isolate user config per test: nothing here may read the real ~/.config.
-    cmd.env("XDG_CONFIG_HOME", dir.join("xdg"));
+    cmd.env("XDG_CONFIG_HOME", owner.join("xdg"));
+    // `owner` stands in for the machine's home directory too, which is what
+    // bounds the project walk — without it the walk would stop at `root` and a
+    // test that puts a preset in an ancestor would have nowhere to put it.
+    cmd.env("HOME", owner);
     cmd
+}
+
+/// A preset on disk, in whichever presets directory the caller names.
+fn write_preset(dir: &Path, name: &str, description: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(
+        dir.join(format!("{name}.toml")),
+        format!(
+            "name = \"{name}\"\ndescription = \"{description}\"\n\n\
+             [[stage]]\nname = \"do\"\ncommand = \"/do\"\n"
+        ),
+    )
+    .unwrap();
 }
 
 /// An initialised repo with no runs.
@@ -1403,9 +1427,18 @@ fn a_named_preset_is_written_out() {
     assert!(stdout(flow(dir.path()).arg("next")).contains("reproduce"));
 }
 
+/// The set the build script generated from `presets/`, so a flow file dropped
+/// in there is covered by the test below without anyone editing a list.
+mod shipped {
+    // This test needs only the names; the binary is what reads the rest.
+    #![allow(dead_code)]
+    include!(concat!(env!("OUT_DIR"), "/shipped.rs"));
+}
+
 #[test]
 fn every_built_in_preset_actually_works() {
-    for preset in ["main-flow", "minimal", "bugfix"] {
+    assert!(!shipped::SHIPPED.is_empty(), "no presets were embedded");
+    for preset in shipped::SHIPPED.iter().map(|preset| preset.name) {
         let dir = TempDir::new().unwrap();
         flow(dir.path())
             .args(["init", "--preset", preset])
@@ -1462,4 +1495,624 @@ fn an_unknown_preset_lists_the_ones_that_exist() {
         .assert()
         .failure()
         .stderr(predicates::str::contains("minimal"));
+}
+
+// --- ticket 13: the Preset Path ---------------------------------------------
+
+#[test]
+fn a_user_preset_is_offered_and_says_it_came_from_the_user() {
+    let dir = repo();
+    write_preset(
+        &dir.path().join("xdg/flow/presets"),
+        "house",
+        "The house style.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    assert!(out.contains("house"), "user preset missing:\n{out}");
+    assert!(
+        out.contains("The house style."),
+        "description missing:\n{out}"
+    );
+    let row = row_for(&out, "house");
+    assert!(
+        row.contains("user"),
+        "row does not name the user layer: {row}"
+    );
+}
+
+#[test]
+fn a_project_preset_is_offered_and_says_it_came_from_the_project() {
+    let dir = repo();
+    write_preset(
+        &dir.path().join(".flow/presets"),
+        "ours",
+        "What we do here.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    assert!(
+        out.contains("What we do here."),
+        "description missing:\n{out}"
+    );
+    let row = row_for(&out, "ours");
+    assert!(
+        row.contains("project"),
+        "row does not name the project layer: {row}"
+    );
+}
+
+#[test]
+fn a_preset_in_an_ancestor_reaches_a_package_that_has_its_own_flow() {
+    // The case a nearest-`.flow` walk would break: the package has already run
+    // `init`, so a search that stops at the first `.flow` never sees the repo
+    // root's menu.
+    let outer = TempDir::new().unwrap();
+    let pkg = outer.path().join("packages/api");
+    std::fs::create_dir_all(&pkg).unwrap();
+    flow_from(&pkg, outer.path()).arg("init").assert().success();
+    write_preset(
+        &outer.path().join(".flow/presets"),
+        "house",
+        "Every package here uses this.",
+    );
+
+    let out = stdout(flow_from(&pkg, outer.path()).arg("presets"));
+
+    assert!(
+        out.contains("Every package here uses this."),
+        "an ancestor's preset never reached the package:\n{out}"
+    );
+    assert!(row_for(&out, "house").contains("project"));
+}
+
+#[test]
+fn the_project_beats_the_user_which_beats_what_ships() {
+    let dir = repo();
+    write_preset(
+        &dir.path().join("xdg/flow/presets"),
+        "main-flow",
+        "The user's own.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+    assert!(
+        row_for(&out, "main-flow").contains("The user's own."),
+        "the user's preset did not beat the shipped one:\n{out}"
+    );
+
+    write_preset(
+        &dir.path().join(".flow/presets"),
+        "main-flow",
+        "The project's own.",
+    );
+    let out = stdout(flow(dir.path()).arg("presets"));
+    assert!(
+        row_for(&out, "main-flow").contains("The project's own."),
+        "the project's preset did not beat the user's:\n{out}"
+    );
+}
+
+#[test]
+fn a_nearer_ancestor_beats_a_farther_one() {
+    let outer = TempDir::new().unwrap();
+    let inner = outer.path().join("packages/api");
+    std::fs::create_dir_all(&inner).unwrap();
+    write_preset(&outer.path().join(".flow/presets"), "house", "The far one.");
+    write_preset(&inner.join(".flow/presets"), "house", "The near one.");
+
+    let out = stdout(flow_from(&inner, outer.path()).arg("presets"));
+
+    assert!(
+        row_for(&out, "house").contains("The near one."),
+        "the farther ancestor won:\n{out}"
+    );
+}
+
+#[test]
+fn a_shadowed_preset_is_still_listed_and_says_what_beat_it() {
+    let dir = repo();
+    write_preset(
+        &dir.path().join(".flow/presets"),
+        "main-flow",
+        "The project's own.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    assert!(
+        out.to_lowercase().contains("shadow"),
+        "shadowing was silent, which is how someone loses an afternoon:\n{out}"
+    );
+    // The beaten entry stays visible, and its layer is named alongside the
+    // layer that beat it.
+    let shadow = out
+        .lines()
+        .find(|line| line.to_lowercase().contains("shadow"))
+        .unwrap();
+    assert!(
+        shadow.contains("shipped"),
+        "the beaten layer is unnamed: {shadow}"
+    );
+    assert!(
+        shadow.contains("project"),
+        "the winning layer is unnamed: {shadow}"
+    );
+}
+
+#[test]
+fn a_shadowed_preset_says_what_you_overrode_not_just_that_you_did() {
+    let dir = repo();
+    let shipped = stdout(flow(dir.path()).arg("presets"));
+    let overridden = row_for(&shipped, "main-flow")
+        .split_whitespace()
+        .last()
+        .unwrap()
+        .to_string();
+    write_preset(
+        &dir.path().join(".flow/presets"),
+        "main-flow",
+        "The project's own.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    // Knowing that you overrode something is only half of knowing what.
+    let shadow = out
+        .lines()
+        .find(|line| line.to_lowercase().contains("shadow"))
+        .unwrap();
+    assert!(
+        shadow.contains(&overridden),
+        "the shadowed description is nowhere: {shadow}"
+    );
+}
+
+#[test]
+fn the_default_marker_and_the_footer_survive() {
+    let dir = repo();
+    let out = stdout(flow(dir.path()).arg("presets"));
+    assert!(out.contains("* main-flow"), "default marker gone:\n{out}");
+    assert!(out.contains("preset = "), "footer gone:\n{out}");
+}
+
+/// The line a preset is listed on, so assertions can be about that entry rather
+/// than about anything else that happens to be on screen.
+fn row_for<'a>(out: &'a str, name: &str) -> &'a str {
+    out.lines()
+        .find(|line| line.split_whitespace().any(|word| word == name))
+        .unwrap_or_else(|| panic!("no row for `{name}`:\n{out}"))
+}
+
+// --- ticket 14: a bad preset is skipped, never fatal ------------------------
+
+/// The five ways a file in a presets directory fails to be a preset, each in
+/// its own file so one run of `flow presets` reports all of them.
+fn write_the_bad_presets(dir: &Path) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join("garbled.toml"), "this is not = = toml\n").unwrap();
+    std::fs::write(
+        dir.join("notaflow.toml"),
+        "name = \"notaflow\"\nstage = 5\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("stageless.toml"),
+        "name = \"stageless\"\ndescription = \"Nothing to do.\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("misnamed.toml"),
+        "name = \"something-else\"\n\n[[stage]]\nname = \"do\"\ncommand = \"/do\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("nameless.toml"),
+        "description = \"Forgot the name.\"\n\n[[stage]]\nname = \"do\"\ncommand = \"/do\"\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_malformed_preset_is_skipped_with_a_reason_and_presets_still_works() {
+    let dir = repo();
+    std::fs::create_dir_all(dir.path().join(".flow/presets")).unwrap();
+    std::fs::write(
+        dir.path().join(".flow/presets/garbled.toml"),
+        "this is not = = toml\n",
+    )
+    .unwrap();
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    assert!(out.contains("garbled.toml"), "the file is unnamed:\n{out}");
+    assert!(
+        out.to_lowercase().contains("skip"),
+        "nothing says it was skipped:\n{out}"
+    );
+    // The flows that are fine are still on offer.
+    assert!(
+        out.contains("main-flow"),
+        "a bad file hid the good ones:\n{out}"
+    );
+}
+
+#[test]
+fn a_repo_still_initialises_with_a_broken_preset_sitting_in_the_tree() {
+    let outer = TempDir::new().unwrap();
+    write_the_bad_presets(&outer.path().join(".flow/presets"));
+    let pkg = outer.path().join("packages/api");
+    std::fs::create_dir_all(&pkg).unwrap();
+
+    flow_from(&pkg, outer.path()).arg("init").assert().success();
+
+    assert!(pkg.join(".flow/flow.toml").is_file());
+}
+
+#[test]
+fn each_reason_a_preset_is_skipped_for_is_reported_distinguishably() {
+    let dir = repo();
+    write_the_bad_presets(&dir.path().join(".flow/presets"));
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    let reason = |file: &str| -> String {
+        out.lines()
+            .find(|line| line.contains(file))
+            .unwrap_or_else(|| panic!("no line for {file}:\n{out}"))
+            .to_string()
+    };
+    let reasons: Vec<String> = ["garbled", "notaflow", "stageless", "misnamed", "nameless"]
+        .iter()
+        .map(|f| reason(&format!("{f}.toml")))
+        .collect();
+
+    assert!(
+        reasons[0].contains("TOML"),
+        "not-TOML unexplained: {}",
+        reasons[0]
+    );
+    assert!(
+        reasons[1].contains("flow"),
+        "not-a-flow unexplained: {}",
+        reasons[1]
+    );
+    assert!(
+        reasons[2].contains("stages"),
+        "stageless unexplained: {}",
+        reasons[2]
+    );
+    // The stem rule, at its softer severity: the same check the build script
+    // treats as fatal, naming both values.
+    assert!(
+        reasons[3].contains("something-else") && reasons[3].contains("misnamed"),
+        "the stem mismatch does not name both values: {}",
+        reasons[3]
+    );
+    // A file that never declared a `name` is told what its name has to be,
+    // rather than being handed serde's complaint about a missing field.
+    assert!(
+        reasons[4].contains("name") && reasons[4].contains("nameless"),
+        "the missing name does not say what it should have been: {}",
+        reasons[4]
+    );
+    for (i, a) in reasons.iter().enumerate() {
+        for b in &reasons[i + 1..] {
+            assert_ne!(a, b, "two reasons read the same");
+        }
+    }
+}
+
+#[test]
+fn a_file_that_is_not_a_toml_is_ignored_in_silence() {
+    let dir = repo();
+    let presets = dir.path().join(".flow/presets");
+    std::fs::create_dir_all(&presets).unwrap();
+    std::fs::write(presets.join("README.md"), "How we use these.\n").unwrap();
+    std::fs::write(presets.join(".main-flow.toml.swp"), "\0garbage").unwrap();
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    assert!(
+        !out.contains("README"),
+        "a README was reported as a problem:\n{out}"
+    );
+    assert!(
+        !out.contains("swp"),
+        "a swapfile was reported as a problem:\n{out}"
+    );
+    assert!(
+        !out.to_lowercase().contains("skip"),
+        "nothing was skipped, but the section appeared:\n{out}"
+    );
+}
+
+#[test]
+fn an_absent_presets_directory_is_not_an_error() {
+    let dir = repo();
+    assert!(!dir.path().join(".flow/presets").exists());
+    flow(dir.path()).arg("presets").assert().success();
+    flow(dir.path()).arg("init").assert().success();
+}
+
+// --- ticket 15: init resolves a name through the Preset Path ----------------
+
+#[test]
+fn a_preset_you_wrote_shadows_the_default_a_bare_init_writes() {
+    let dir = TempDir::new().unwrap();
+    write_preset(
+        &dir.path().join("xdg/flow/presets"),
+        "main-flow",
+        "The house spine.",
+    );
+
+    flow(dir.path()).arg("init").assert().success();
+
+    // Shadowing works for the default too, not only for an explicit choice.
+    let toml = read(dir.path(), ".flow/flow.toml");
+    assert!(
+        toml.contains("The house spine."),
+        "wrote the shipped one:\n{toml}"
+    );
+}
+
+#[test]
+fn init_writes_a_user_preset_named_on_the_command_line() {
+    let dir = TempDir::new().unwrap();
+    write_preset(&dir.path().join("xdg/flow/presets"), "spike", "Throwaway.");
+
+    flow(dir.path())
+        .args(["init", "--preset", "spike"])
+        .assert()
+        .success();
+
+    assert!(read(dir.path(), ".flow/flow.toml").contains("Throwaway."));
+}
+
+#[test]
+fn init_writes_a_preset_found_in_an_ancestor() {
+    let outer = TempDir::new().unwrap();
+    write_preset(
+        &outer.path().join(".flow/presets"),
+        "house",
+        "Every package here uses this.",
+    );
+    let pkg = outer.path().join("packages/api");
+    std::fs::create_dir_all(&pkg).unwrap();
+
+    let out = stdout(flow_from(&pkg, outer.path()).args(["init", "--preset", "house"]));
+
+    assert!(std::fs::read_to_string(pkg.join(".flow/flow.toml"))
+        .unwrap()
+        .contains("Every package here uses this."));
+    // Inheritance from a parent directory must never be invisible.
+    assert!(
+        out.contains(&outer.path().display().to_string()),
+        "init did not name the ancestor it drew from:\n{out}"
+    );
+}
+
+#[test]
+fn init_names_the_layer_the_flow_came_from() {
+    let dir = TempDir::new().unwrap();
+    let out = stdout(flow(dir.path()).arg("init"));
+    assert!(
+        out.contains("main-flow"),
+        "init did not name the flow:\n{out}"
+    );
+    assert!(
+        out.contains("shipped"),
+        "init did not name the layer:\n{out}"
+    );
+}
+
+#[test]
+fn a_configured_default_that_resolves_to_nothing_is_a_hard_error() {
+    let dir = TempDir::new().unwrap();
+    let config = dir.path().join("xdg/flow/config.toml");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    std::fs::write(&config, "preset = \"gone\"\n").unwrap();
+
+    flow(dir.path())
+        .arg("init")
+        .assert()
+        .failure()
+        // Never a silent fallback: writing a flow the user did not ask for
+        // into a file they are then told they own is the worst outcome here.
+        .stderr(predicates::str::contains("gone"))
+        .stderr(predicates::str::contains("main-flow"));
+
+    assert!(!dir.path().join(".flow/flow.toml").exists());
+}
+
+#[test]
+fn an_unknown_preset_lists_presets_from_every_layer() {
+    let dir = TempDir::new().unwrap();
+    write_preset(&dir.path().join("xdg/flow/presets"), "spike", "Throwaway.");
+
+    flow(dir.path())
+        .args(["init", "--preset", "nonsense"])
+        .assert()
+        .failure()
+        .stderr(predicates::str::contains("spike"))
+        .stderr(predicates::str::contains("minimal"));
+}
+
+// --- ticket 16: config answers "where do I put a flow of my own" ------------
+
+#[test]
+fn config_names_the_presets_directories_it_reads() {
+    let dir = repo();
+    write_preset(&dir.path().join("xdg/flow/presets"), "spike", "Throwaway.");
+    write_preset(&dir.path().join(".flow/presets"), "house", "Ours.");
+
+    let out = stdout(flow(dir.path()).arg("config"));
+
+    assert!(
+        out.contains("xdg/flow/presets"),
+        "the user presets directory is unnamed:\n{out}"
+    );
+    assert!(
+        out.contains(".flow/presets"),
+        "the project presets directory is unnamed:\n{out}"
+    );
+}
+
+#[test]
+fn config_marks_a_presets_directory_that_does_not_exist_yet() {
+    // "Where do I create it" is answered by the exact path on screen, not by
+    // something the reader has to infer.
+    let dir = repo();
+    assert!(!dir.path().join(".flow/presets").exists());
+
+    let out = stdout(flow(dir.path()).arg("config"));
+
+    let row = out
+        .lines()
+        .find(|line| line.contains(".flow/presets"))
+        .unwrap_or_else(|| panic!("the project presets directory is missing:\n{out}"));
+    assert!(row.contains("does not exist"), "unmarked: {row}");
+}
+
+#[test]
+fn config_names_an_ancestor_presets_directory_it_inherits_from() {
+    let outer = TempDir::new().unwrap();
+    write_preset(&outer.path().join(".flow/presets"), "house", "Ours.");
+    let pkg = outer.path().join("packages/api");
+    std::fs::create_dir_all(&pkg).unwrap();
+    flow_from(&pkg, outer.path()).arg("init").assert().success();
+
+    let out = stdout(flow_from(&pkg, outer.path()).arg("config"));
+
+    assert!(
+        out.contains(&outer.path().join(".flow/presets").display().to_string()),
+        "an inherited presets directory is invisible:\n{out}"
+    );
+}
+
+// --- review: the root a command acts on -------------------------------------
+
+#[test]
+fn a_relative_root_walks_the_roots_ancestry_not_the_working_directory() {
+    let dir = TempDir::new().unwrap();
+    let target = dir.path().join("target-repo");
+    let elsewhere = dir.path().join("elsewhere");
+    std::fs::create_dir_all(&target).unwrap();
+    write_preset(
+        &elsewhere.join(".flow/presets"),
+        "elsewhere-only",
+        "Belongs to another repo entirely.",
+    );
+
+    let mut cmd = Command::cargo_bin("flow").unwrap();
+    cmd.current_dir(&elsewhere);
+    cmd.arg("--root").arg("../target-repo");
+    cmd.env("XDG_CONFIG_HOME", dir.path().join("xdg"));
+    let out = stdout(cmd.arg("presets"));
+
+    assert!(
+        !out.contains("elsewhere-only"),
+        "the working directory's presets reached an unrelated root:\n{out}"
+    );
+}
+
+#[test]
+fn a_root_of_dot_does_not_shadow_itself() {
+    let dir = TempDir::new().unwrap();
+    write_preset(&dir.path().join(".flow/presets"), "house", "Ours.");
+
+    let mut cmd = Command::cargo_bin("flow").unwrap();
+    cmd.current_dir(dir.path());
+    cmd.arg("--root").arg(".");
+    cmd.env("XDG_CONFIG_HOME", dir.path().join("xdg"));
+    let out = stdout(cmd.arg("presets"));
+
+    assert!(
+        !out.contains("shadows"),
+        "the same directory was read twice, so a preset shadowed itself:\n{out}"
+    );
+}
+
+#[test]
+fn a_default_preset_that_resolves_to_nothing_is_said_so_in_the_listing() {
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("xdg/flow")).unwrap();
+    std::fs::write(
+        dir.path().join("xdg/flow/config.toml"),
+        "preset = \"gone\"\n",
+    )
+    .unwrap();
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    // Every row is unmarked, and this is the screen someone reads to find out
+    // why `flow init` refused — so it has to name the preset that is missing.
+    assert!(
+        out.contains("gone"),
+        "the listing says nothing about a default that resolves to nothing:\n{out}"
+    );
+}
+
+#[test]
+fn the_project_walk_stops_at_your_home_directory() {
+    let outer = TempDir::new().unwrap();
+    let home = outer.path().join("home/someone");
+    let repo = home.join("proj");
+    std::fs::create_dir_all(&repo).unwrap();
+    write_preset(&home.join(".flow/presets"), "inside-home", "Yours.");
+    write_preset(
+        &outer.path().join(".flow/presets"),
+        "above-home",
+        "In a directory nobody owns.",
+    );
+
+    let mut cmd = Command::cargo_bin("flow").unwrap();
+    cmd.arg("--root").arg(&repo);
+    cmd.env("HOME", &home);
+    cmd.env("XDG_CONFIG_HOME", home.join("xdg"));
+    let out = stdout(cmd.arg("presets"));
+
+    assert!(
+        out.contains("inside-home"),
+        "a preset inside your home was unreachable:\n{out}"
+    );
+    // A preset carries the launcher argv `flow go` spawns, so one sitting above
+    // anything you own must not beat what ships.
+    assert!(
+        !out.contains("above-home"),
+        "a preset above your home directory was read:\n{out}"
+    );
+}
+
+#[test]
+fn the_project_walk_reaches_the_repository_root_outside_your_home() {
+    let outer = TempDir::new().unwrap();
+    let repo_root = outer.path().join("srv/monorepo");
+    let pkg = repo_root.join("packages/api");
+    std::fs::create_dir_all(&pkg).unwrap();
+    std::fs::create_dir_all(repo_root.join(".git")).unwrap();
+    write_preset(&repo_root.join(".flow/presets"), "house", "The monorepo's.");
+    write_preset(
+        &outer.path().join(".flow/presets"),
+        "above-repo",
+        "Outside the repository.",
+    );
+
+    let mut cmd = Command::cargo_bin("flow").unwrap();
+    cmd.arg("--root").arg(&pkg);
+    // Home is somewhere else entirely, so the repository is the only bound.
+    cmd.env("HOME", outer.path().join("elsewhere"));
+    cmd.env("XDG_CONFIG_HOME", outer.path().join("xdg"));
+    let out = stdout(cmd.arg("presets"));
+
+    assert!(
+        out.contains("house"),
+        "the repository root's preset never reached the package:\n{out}"
+    );
+    assert!(
+        !out.contains("above-repo"),
+        "a preset above the repository root was read:\n{out}"
+    );
 }

@@ -31,6 +31,14 @@ pub fn show(root: &Path) -> Result<()> {
         None => println!("  unavailable (no HOME or XDG_CONFIG_HOME)"),
     }
 
+    // Where a flow of your own goes. `flow` only ever reads these (ADR-0008),
+    // so an absent one is named rather than omitted: the answer to "where do I
+    // create it" has to be the exact path on screen.
+    match crate::config::user_presets_dir() {
+        Some(dir) => println!("  {}{}", dir.display(), absence_note(&dir)),
+        None => println!("  unavailable (no HOME or XDG_CONFIG_HOME)"),
+    }
+
     println!("\nThe project's — which stages exist, committed and shared:");
     let path = flow_path(root);
     println!(
@@ -42,6 +50,17 @@ pub fn show(root: &Path) -> Result<()> {
             "   (no flow here — `flow init`)"
         }
     );
+
+    // The nearest presets directory always, because that is the one you would
+    // create; the ancestors only when they exist, because every directory up to
+    // the ceiling of the walk is one you could theoretically create.
+    let mut project_dirs = crate::preset_path::project_dirs(root).into_iter();
+    if let Some(nearest) = project_dirs.next() {
+        println!("  {}{}", nearest.display(), absence_note(&nearest));
+    }
+    for inherited in project_dirs.filter(|dir| dir.is_dir()) {
+        println!("  {}   (inherited from an ancestor)", inherited.display());
+    }
 
     println!(
         "\nDefault agent: {}",
@@ -67,21 +86,87 @@ pub fn show(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// List the flows that ship in the binary.
-pub fn presets() -> Result<()> {
+/// Wide enough for the longest layer name, which is a closed set of three.
+const LAYER_WIDTH: usize = 9;
+
+/// List every flow you could init with, from all three layers of the Preset
+/// Path, saying where each one came from.
+pub fn presets(root: &Path) -> Result<()> {
     let (user, _) = crate::config::UserConfig::load()?;
-    let default = if user.preset.is_empty() {
-        super::init::PRESETS[0].0
-    } else {
+    let chosen = !user.preset.is_empty();
+    let default = if chosen {
         user.preset.as_str()
+    } else {
+        crate::presets::DEFAULT
     };
+
+    let found = crate::preset_path::discover(root);
+    let presets = &found.presets;
+    println!("Flows you can init with. Where two share a name the project's wins, then yours,");
     println!(
-        "Built-in flows. `flow init --preset <name>`, or pass a path to a .toml of your own.\n"
+        "then what ships. `flow init --preset <name>`, or pass a path to a .toml of your own.\n"
     );
-    for (name, description, _) in super::init::PRESETS {
-        let mark = if *name == default { "*" } else { " " };
-        println!("  {mark} {name:<12}{description}");
+
+    // Wide enough for the longest name, so a preset someone wrote does not
+    // wrap the column just by having a longer name than ours.
+    let width = presets
+        .iter()
+        .map(|p| p.name.len())
+        .max()
+        .unwrap_or(0)
+        .max(10)
+        + 2;
+    for preset in presets {
+        let mark = if preset.name == default { "*" } else { " " };
+        println!(
+            "  {mark} {:<width$}{:<LAYER_WIDTH$}{}",
+            preset.name,
+            preset.layer.label(),
+            preset.description
+        );
+        // A shadowed preset stays on screen, with the description of what was
+        // overridden: silent shadowing is how someone loses an afternoon to a
+        // flow they do not recognise. Both layers are named in full, so two
+        // ancestors carrying the same name are told apart.
+        for beaten in &preset.shadowed {
+            println!(
+                "      {} shadows {}{}",
+                preset.layer,
+                beaten.layer,
+                if beaten.description.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", beaten.description)
+                }
+            );
+        }
     }
+
+    // Only when there is something to say: a directory with nothing wrong in
+    // it should look like a directory with nothing wrong in it.
+    if !found.skipped.is_empty() {
+        println!("\nSkipped:");
+        for file in &found.skipped {
+            println!("    {} {}", file.path.display(), file.reason);
+        }
+    }
+
+    // A default that resolves to nothing leaves every row unmarked, and this
+    // listing is where someone comes to work out why `flow init` refused. The
+    // footer alone would explain a `*` that is not on screen.
+    if !presets.iter().any(|preset| preset.name == default) {
+        if chosen {
+            println!(
+                "\nYour user config sets `preset = \"{default}\"`, and nothing above is named \
+                 that — a bare `flow init` has nothing to write."
+            );
+        } else {
+            println!(
+                "\nNothing above is named `{default}`, so a bare `flow init` has nothing to write."
+            );
+        }
+    }
+
     println!("\n* is what a bare `flow init` writes. Change it with `preset = \"<name>\"` in your user config.");
     Ok(())
 }
@@ -101,6 +186,15 @@ pub fn init() -> Result<()> {
         path.display()
     );
     Ok(())
+}
+
+/// The note a directory carries when it is not there yet.
+fn absence_note(dir: &Path) -> &'static str {
+    if dir.is_dir() {
+        ""
+    } else {
+        "   (does not exist — drop a .toml in here to add a flow)"
+    }
 }
 
 /// `flow config` should work outside a flow repo, where there is no flow to read.

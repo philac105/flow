@@ -12,7 +12,7 @@
 
 agent = "claude"
 
-# Which built-in flow a bare `flow init` writes. See `flow presets`.
+# Which flow a bare `flow init` writes, by name. See `flow presets`.
 # preset = "main-flow"
 
 [agents.claude]

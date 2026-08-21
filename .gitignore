@@ -1,1 +1,5 @@
 /target
+
+# Editor state, per-developer and never shared.
+/.idea/
+.vscode/
