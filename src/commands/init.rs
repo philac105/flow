@@ -5,26 +5,6 @@ use std::path::Path;
 
 const ADAPTER_SKILL: &str = include_str!("../../assets/adapter-skill.md");
 
-/// The flows that ship in the binary. `flow init` writes one out and then
-/// forgets about it — the repo owns its copy from that moment (ADR-0003).
-pub const PRESETS: &[(&str, &str, &str)] = &[
-    (
-        "main-flow",
-        "The idea → ship spine, in order. Five stages, uses an issue tracker.",
-        include_str!("../../assets/main-flow.toml"),
-    ),
-    (
-        "minimal",
-        "Shape it, build it, check it. Three stages, nothing to install.",
-        include_str!("../../assets/minimal.toml"),
-    ),
-    (
-        "bugfix",
-        "Reproduce, diagnose, fix, verify. For defects rather than features.",
-        include_str!("../../assets/bugfix.toml"),
-    ),
-];
-
 const BLOCK_START: &str = "<!-- flow:start -->";
 const BLOCK_END: &str = "<!-- flow:end -->";
 
@@ -51,7 +31,7 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
     let chosen = preset
         .map(str::to_string)
         .or_else(|| (!user.preset.is_empty()).then(|| user.preset.clone()))
-        .unwrap_or_else(|| PRESETS[0].0.to_string());
+        .unwrap_or_else(|| crate::presets::DEFAULT.to_string());
     let contents = resolve_preset(&chosen)?;
 
     std::fs::create_dir_all(runs_dir(root))?;
@@ -93,20 +73,19 @@ pub fn run(root: &Path, preset: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// A built-in name, or a path to a flow you wrote yourself.
+/// A shipped preset's name, or a path to a flow you wrote yourself.
 fn resolve_preset(chosen: &str) -> Result<String> {
-    if let Some((_, _, contents)) = PRESETS.iter().find(|(name, _, _)| *name == chosen) {
-        return Ok((*contents).to_string());
+    if let Some(preset) = crate::presets::shipped(chosen) {
+        return Ok(preset.contents.to_string());
     }
     let path = Path::new(chosen);
     if path.is_file() {
         return std::fs::read_to_string(path)
             .map_err(|e| anyhow!("could not read {}: {e}", path.display()));
     }
-    let names: Vec<&str> = PRESETS.iter().map(|(n, _, _)| *n).collect();
     Err(anyhow!(
         "no preset or file called `{chosen}` — built-in presets: {}. See `flow presets`.",
-        names.join(", ")
+        crate::presets::shipped_names().join(", ")
     ))
 }
 

@@ -1403,9 +1403,18 @@ fn a_named_preset_is_written_out() {
     assert!(stdout(flow(dir.path()).arg("next")).contains("reproduce"));
 }
 
+/// The set the build script generated from `presets/`, so a flow file dropped
+/// in there is covered by the test below without anyone editing a list.
+mod shipped {
+    // This test needs only the names; the binary is what reads the rest.
+    #![allow(dead_code)]
+    include!(concat!(env!("OUT_DIR"), "/shipped.rs"));
+}
+
 #[test]
 fn every_built_in_preset_actually_works() {
-    for preset in ["main-flow", "minimal", "bugfix"] {
+    assert!(!shipped::SHIPPED.is_empty(), "no presets were embedded");
+    for preset in shipped::SHIPPED.iter().map(|preset| preset.name) {
         let dir = TempDir::new().unwrap();
         flow(dir.path())
             .args(["init", "--preset", preset])
