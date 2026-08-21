@@ -41,11 +41,23 @@ impl fmt::Display for Source {
 
 /// `$XDG_CONFIG_HOME/flow/config.toml`, falling back to `~/.config`.
 pub fn user_config_path() -> Option<PathBuf> {
+    Some(user_dir()?.join("config.toml"))
+}
+
+/// `$XDG_CONFIG_HOME/flow/presets/` — the user layer of the Preset Path,
+/// resolved the same way the config file beside it is. `flow` only ever reads
+/// it (ADR-0008).
+pub fn user_presets_dir() -> Option<PathBuf> {
+    Some(user_dir()?.join("presets"))
+}
+
+/// `$XDG_CONFIG_HOME/flow`, falling back to `~/.config/flow`.
+fn user_dir() -> Option<PathBuf> {
     let base = match std::env::var_os("XDG_CONFIG_HOME") {
         Some(dir) if !dir.is_empty() => PathBuf::from(dir),
         _ => PathBuf::from(std::env::var_os("HOME")?).join(".config"),
     };
-    Some(base.join("flow").join("config.toml"))
+    Some(base.join("flow"))
 }
 
 impl UserConfig {

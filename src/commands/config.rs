@@ -67,21 +67,44 @@ pub fn show(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// List the flows that ship in the binary.
-pub fn presets() -> Result<()> {
+/// List every flow you could init with, from all three layers of the Preset
+/// Path, saying where each one came from.
+pub fn presets(root: &Path) -> Result<()> {
     let (user, _) = crate::config::UserConfig::load()?;
     let default = if user.preset.is_empty() {
         crate::presets::DEFAULT
     } else {
         user.preset.as_str()
     };
-    println!(
-        "Built-in flows. `flow init --preset <name>`, or pass a path to a .toml of your own.\n"
-    );
-    for preset in crate::presets::SHIPPED {
+
+    let found = crate::preset_path::discover(root);
+    println!("Flows you can init with, nearest owner first — the project's, then yours, then what ships.");
+    println!("`flow init --preset <name>`, or pass a path to a .toml of your own.\n");
+
+    // Wide enough for the longest name, so a preset someone wrote does not
+    // wrap the column just by having a longer name than ours.
+    let width = found
+        .iter()
+        .map(|p| p.name.len())
+        .max()
+        .unwrap_or(0)
+        .max(10)
+        + 2;
+    for preset in &found {
         let mark = if preset.name == default { "*" } else { " " };
-        println!("  {mark} {:<12}{}", preset.name, preset.description);
+        println!(
+            "  {mark} {:<width$}{:<9}{}",
+            preset.name,
+            preset.layer.label(),
+            preset.description
+        );
+        // A shadowed preset stays on screen: silent shadowing is how someone
+        // loses an afternoon to a flow they do not recognise.
+        for beaten in &preset.shadowed {
+            println!("      the {beaten} one is shadowed by {}", preset.layer);
+        }
     }
+
     println!("\n* is what a bare `flow init` writes. Change it with `preset = \"<name>\"` in your user config.");
     Ok(())
 }

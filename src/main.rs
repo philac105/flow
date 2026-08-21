@@ -2,6 +2,7 @@ mod commands;
 mod config;
 mod flow;
 mod preset_name;
+mod preset_path;
 mod presets;
 mod prompt;
 mod run;
@@ -153,7 +154,7 @@ fn run() -> Result<()> {
 
     match cli.command {
         Command::Init { preset } => commands::init::run(&root, preset.as_deref()),
-        Command::Presets => commands::config::presets(),
+        Command::Presets => commands::config::presets(&root),
         Command::Config { init } => {
             if init {
                 commands::config::init()

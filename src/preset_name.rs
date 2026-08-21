@@ -11,8 +11,7 @@
 /// under; otherwise the reason they disagree, written for whoever has to fix
 /// the file.
 // Two callers, one of them outside the crate: the build script, which treats a
-// failure as fatal. The crate's own caller arrives with preset discovery.
-#[allow(dead_code)]
+// failure as fatal, and preset discovery, which treats it as a reason to skip.
 pub fn check(stem: &str, declared: &str) -> Result<(), String> {
     if declared == stem {
         Ok(())

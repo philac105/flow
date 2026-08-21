@@ -11,11 +11,31 @@ use std::path::Path;
 use tempfile::TempDir;
 
 fn flow(dir: &Path) -> Command {
+    flow_from(dir, dir)
+}
+
+/// `flow` run from `root`, with the user layer isolated under `owner`. The two
+/// come apart only when a test runs from a nested package and still wants the
+/// outer directory's `xdg` to be the machine's config.
+fn flow_from(root: &Path, owner: &Path) -> Command {
     let mut cmd = Command::cargo_bin("flow").unwrap();
-    cmd.arg("--root").arg(dir);
+    cmd.arg("--root").arg(root);
     // Isolate user config per test: nothing here may read the real ~/.config.
-    cmd.env("XDG_CONFIG_HOME", dir.join("xdg"));
+    cmd.env("XDG_CONFIG_HOME", owner.join("xdg"));
     cmd
+}
+
+/// A preset on disk, in whichever presets directory the caller names.
+fn write_preset(dir: &Path, name: &str, description: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(
+        dir.join(format!("{name}.toml")),
+        format!(
+            "name = \"{name}\"\ndescription = \"{description}\"\n\n\
+             [[stage]]\nname = \"do\"\ncommand = \"/do\"\n"
+        ),
+    )
+    .unwrap();
 }
 
 /// An initialised repo with no runs.
@@ -1471,4 +1491,165 @@ fn an_unknown_preset_lists_the_ones_that_exist() {
         .assert()
         .failure()
         .stderr(predicates::str::contains("minimal"));
+}
+
+// --- ticket 13: the Preset Path ---------------------------------------------
+
+#[test]
+fn a_user_preset_is_offered_and_says_it_came_from_the_user() {
+    let dir = repo();
+    write_preset(
+        &dir.path().join("xdg/flow/presets"),
+        "house",
+        "The house style.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    assert!(out.contains("house"), "user preset missing:\n{out}");
+    assert!(
+        out.contains("The house style."),
+        "description missing:\n{out}"
+    );
+    let row = row_for(&out, "house");
+    assert!(
+        row.contains("user"),
+        "row does not name the user layer: {row}"
+    );
+}
+
+#[test]
+fn a_project_preset_is_offered_and_says_it_came_from_the_project() {
+    let dir = repo();
+    write_preset(
+        &dir.path().join(".flow/presets"),
+        "ours",
+        "What we do here.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    assert!(
+        out.contains("What we do here."),
+        "description missing:\n{out}"
+    );
+    let row = row_for(&out, "ours");
+    assert!(
+        row.contains("project"),
+        "row does not name the project layer: {row}"
+    );
+}
+
+#[test]
+fn a_preset_in_an_ancestor_reaches_a_package_that_has_its_own_flow() {
+    // The case a nearest-`.flow` walk would break: the package has already run
+    // `init`, so a search that stops at the first `.flow` never sees the repo
+    // root's menu.
+    let outer = TempDir::new().unwrap();
+    let pkg = outer.path().join("packages/api");
+    std::fs::create_dir_all(&pkg).unwrap();
+    flow_from(&pkg, outer.path()).arg("init").assert().success();
+    write_preset(
+        &outer.path().join(".flow/presets"),
+        "house",
+        "Every package here uses this.",
+    );
+
+    let out = stdout(flow_from(&pkg, outer.path()).arg("presets"));
+
+    assert!(
+        out.contains("Every package here uses this."),
+        "an ancestor's preset never reached the package:\n{out}"
+    );
+    assert!(row_for(&out, "house").contains("project"));
+}
+
+#[test]
+fn the_project_beats_the_user_which_beats_what_ships() {
+    let dir = repo();
+    write_preset(
+        &dir.path().join("xdg/flow/presets"),
+        "main-flow",
+        "The user's own.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+    assert!(
+        row_for(&out, "main-flow").contains("The user's own."),
+        "the user's preset did not beat the shipped one:\n{out}"
+    );
+
+    write_preset(
+        &dir.path().join(".flow/presets"),
+        "main-flow",
+        "The project's own.",
+    );
+    let out = stdout(flow(dir.path()).arg("presets"));
+    assert!(
+        row_for(&out, "main-flow").contains("The project's own."),
+        "the project's preset did not beat the user's:\n{out}"
+    );
+}
+
+#[test]
+fn a_nearer_ancestor_beats_a_farther_one() {
+    let outer = TempDir::new().unwrap();
+    let inner = outer.path().join("packages/api");
+    std::fs::create_dir_all(&inner).unwrap();
+    write_preset(&outer.path().join(".flow/presets"), "house", "The far one.");
+    write_preset(&inner.join(".flow/presets"), "house", "The near one.");
+
+    let out = stdout(flow_from(&inner, outer.path()).arg("presets"));
+
+    assert!(
+        row_for(&out, "house").contains("The near one."),
+        "the farther ancestor won:\n{out}"
+    );
+}
+
+#[test]
+fn a_shadowed_preset_is_still_listed_and_says_what_beat_it() {
+    let dir = repo();
+    write_preset(
+        &dir.path().join(".flow/presets"),
+        "main-flow",
+        "The project's own.",
+    );
+
+    let out = stdout(flow(dir.path()).arg("presets"));
+
+    assert!(
+        out.to_lowercase().contains("shadow"),
+        "shadowing was silent, which is how someone loses an afternoon:\n{out}"
+    );
+    // The beaten entry stays visible, and its layer is named alongside the
+    // layer that beat it.
+    let shadow = out
+        .lines()
+        .find(|line| line.to_lowercase().contains("shadow"))
+        .unwrap();
+    assert!(
+        shadow.contains("shipped"),
+        "the beaten layer is unnamed: {shadow}"
+    );
+    assert!(
+        shadow.contains("project"),
+        "the winning layer is unnamed: {shadow}"
+    );
+}
+
+#[test]
+fn the_default_marker_and_the_footer_survive() {
+    let dir = repo();
+    let out = stdout(flow(dir.path()).arg("presets"));
+    assert!(out.contains("* main-flow"), "default marker gone:\n{out}");
+    assert!(out.contains("preset = "), "footer gone:\n{out}");
+}
+
+/// The line a preset is listed on, so assertions can be about that entry rather
+/// than about anything else that happens to be on screen.
+fn row_for<'a>(out: &'a str, name: &str) -> &'a str {
+    out.lines()
+        .find(|line| line.split_whitespace().any(|word| word == name))
+        .unwrap_or_else(|| panic!("no row for `{name}`:\n{out}"))
 }
