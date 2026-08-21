@@ -1,16 +1,16 @@
 +++
-slug = "presets-folder"
-title = "presets-folder"
+slug = "presets-folder-2"
+title = "presets-folder-2"
 kind = ""
 flow = "main-flow"
 status = "finished"
-created = "2026-08-20T23:40:15.552Z"
-updated = "2026-08-20T23:58:26.430Z"
+created = "2026-08-20T23:58:32.514Z"
+updated = "2026-08-20T23:59:34.474Z"
 
 [[stage]]
 name = "grill"
 status = "in_progress"
-started = "2026-08-20T23:40:15.552Z"
+started = "2026-08-20T23:58:32.514Z"
 
 [[stage]]
 name = "spec"
@@ -35,10 +35,10 @@ Run finished.
 
 ## Log
 
-### 2026-08-20T23:40:15Z — Started. First stage is `grill`.
+### 2026-08-20T23:58:32Z — Started. First stage is `grill`.
 
 Interview until the plan is sharp. Produces decisions, a glossary and ADRs.
 
 Run `/grill-with-docs` next.
 
-### 2026-08-20T23:58:26Z — Run finished.
+### 2026-08-20T23:59:34Z — Run finished.

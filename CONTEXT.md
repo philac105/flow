@@ -23,10 +23,18 @@ Flow stores it and prints it; Flow never executes it.
 _Avoid_: action, script, hook
 
 **Preset**:
-A Flow definition shipped inside the binary, or a file someone wrote. `flow
-init` writes a Preset out to `.flow/flow.toml`, after which the repo owns it and
-the Preset is irrelevant.
+A Flow definition offered for `flow init` to copy, found on the Preset Path.
+`flow init` writes one out to `.flow/flow.toml`, after which the repo owns it
+and the Preset is irrelevant.
 _Avoid_: template, default, built-in
+
+**Preset Path**:
+The ordered list of places Presets are read from, nearest owner first: the
+**project** (`.flow/presets/`, in the repo or any ancestor of it), the **user**
+(`$XDG_CONFIG_HOME/flow/presets/`), then **shipped** (embedded in the binary).
+A nearer Preset shadows a farther one of the same name, and Flow only ever
+reads it.
+_Avoid_: search path, lookup order, registry
 
 ### The work
 

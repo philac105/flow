@@ -3,9 +3,9 @@ slug = "flow-itself"
 title = "Flow itself"
 kind = "project"
 flow = "main-flow"
-status = "active"
+status = "finished"
 created = "2026-08-20T22:35:18.891Z"
-updated = "2026-08-20T23:34:35.862Z"
+updated = "2026-08-20T23:58:16.845Z"
 
 [[stage]]
 name = "grill"
@@ -37,15 +37,14 @@ completed = "2026-08-20T23:34:35.862Z"
 
 [[stage]]
 name = "review"
-status = "in_progress"
+status = "done"
 started = "2026-08-20T22:39:08.121Z"
+completed = "2026-08-20T23:58:07.726Z"
 +++
 
 ## Where we are
 
-`implement` done → `review`
-
-Added `flow switch` and a current-run pointer at .flow/current (gitignored, local to a checkout) — bare commands follow it rather than guessing, and refuse when several runs are active with none current. Shipped three presets instead of one: main-flow, minimal, bugfix; --preset also accepts a path to your own .toml, and `preset =` in the user config changes what a bare `flow init` writes. 82 tests.
+Run finished.
 
 ## Log
 
@@ -86,3 +85,7 @@ Reopened: adding a current-run pointer and more than one preset.
 ### 2026-08-20T23:34:35Z — `implement` done → `review`
 
 Added `flow switch` and a current-run pointer at .flow/current (gitignored, local to a checkout) — bare commands follow it rather than guessing, and refuse when several runs are active with none current. Shipped three presets instead of one: main-flow, minimal, bugfix; --preset also accepts a path to your own .toml, and `preset =` in the user config changes what a bare `flow init` writes. 82 tests.
+
+### 2026-08-20T23:58:07Z — `review` done — every stage settled
+
+### 2026-08-20T23:58:16Z — Run finished.
