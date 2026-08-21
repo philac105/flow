@@ -118,17 +118,60 @@ pub fn discover(start: &Path) -> Discovered {
 /// root's menu — gutting the only case the project layer exists for. This is a
 /// second traversal of the same ancestry, and `find_root` keeps its behaviour.
 ///
+/// The walk stops at the `ceiling` below rather than at `/`.
+///
 /// `start` is expected absolute: the parent of a relative path is the empty
 /// path, which reads as the process's working directory. `main` resolves it
 /// once, for this walk and for `find_root` alike.
 pub fn project_dirs(start: &Path) -> Vec<PathBuf> {
+    let ceiling = ceiling(start);
     let mut dirs = Vec::new();
     let mut cur = Some(start);
     while let Some(dir) = cur {
         dirs.push(flow_dir(dir).join("presets"));
+        if dir == ceiling {
+            break;
+        }
         cur = dir.parent();
     }
     dirs
+}
+
+/// How far up the project layer reaches: your repository, or your home
+/// directory, whichever is farther — and the starting directory itself when
+/// neither is on the ancestry.
+///
+/// Above those are directories nobody in particular owns — `/tmp`, `/`, a
+/// shared mount — and a preset is not inert data: it carries the launcher argv
+/// `flow go` spawns. Anyone able to write `/tmp/.flow/presets/main-flow.toml`
+/// would otherwise change what a bare `flow init` writes for every repo beneath
+/// it, beating what ships and looking exactly like the repo's own.
+fn ceiling(start: &Path) -> PathBuf {
+    // The outermost repository, not the nearest: a monorepo standardising the
+    // flows its packages reach for is the case the project layer exists for,
+    // and its root is above any submodule's.
+    let mut repo = None;
+    let mut cur = Some(start);
+    while let Some(dir) = cur {
+        // Only whether a repository is here — never anything inside it.
+        if dir.join(".git").exists() {
+            repo = Some(dir.to_path_buf());
+        }
+        cur = dir.parent();
+    }
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|home| start.starts_with(home));
+
+    match (repo, home) {
+        // Both are ancestors of `start`, so one contains the other. Take the
+        // farther, so that a `~/work/.flow/presets` still reaches the repos
+        // under it.
+        (Some(repo), Some(home)) if repo.starts_with(&home) => home,
+        (Some(repo), _) => repo,
+        (None, Some(home)) => home,
+        (None, None) => start.to_path_buf(),
+    }
 }
 
 /// Every preset file on the Path, nearest owner first — so the first entry for

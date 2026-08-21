@@ -53,7 +53,7 @@ pub fn show(root: &Path) -> Result<()> {
 
     // The nearest presets directory always, because that is the one you would
     // create; the ancestors only when they exist, because every directory up to
-    // the filesystem root is one you could theoretically create.
+    // the ceiling of the walk is one you could theoretically create.
     let mut project_dirs = crate::preset_path::project_dirs(root).into_iter();
     if let Some(nearest) = project_dirs.next() {
         println!("  {}{}", nearest.display(), absence_note(&nearest));

@@ -1,9 +1,10 @@
 # Presets are discovered, never written
 
-`flow` reads presets from three places — `.flow/presets/` in the repo and any
-ancestor of it, `$XDG_CONFIG_HOME/flow/presets/`, and a set embedded in the
-binary at build time from `presets/` — and **writes to none of them**. The only
-file `flow init` creates from a preset is the repo's own `.flow/flow.toml`.
+`flow` reads presets from three places — `.flow/presets/` in the repo and its
+ancestors up to the ceiling below, `$XDG_CONFIG_HOME/flow/presets/`, and a set
+embedded in the binary at build time from `presets/` — and **writes to none of
+them**. The only file `flow init` creates from a preset is the repo's own
+`.flow/flow.toml`.
 
 The alternative was installing our presets to `~/.config/flow/presets/` on first
 run or upgrade, and reading everything back from disk. That is the only design
@@ -41,3 +42,14 @@ Nested `.flow` directories are deliberate: `flow init` writes to the working
 directory while the preset walk unions every ancestor, which is what lets a
 monorepo standardise the flows its packages reach for. `init` names the ancestor
 it took a preset from.
+
+**The walk has a ceiling: your repository root, or your home directory,
+whichever is farther — and the starting directory alone when neither is on the
+ancestry.** It first said "any ancestor", which reached `/`. A preset is not
+inert data: it carries the launcher argv `flow go` spawns, so on a shared
+machine anyone able to write `/tmp/.flow/presets/main-flow.toml` would change
+what a bare `flow init` writes for every repo beneath it, beating what ships and
+looking exactly like the repo's own. The ceiling keeps the monorepo case whole —
+that root is the outermost `.git`, above any submodule's — and stops the reach
+at the last directory you can be said to own. Taking the farther of the two is
+what lets a `~/work/.flow/presets` still cover the repos underneath it.

@@ -22,6 +22,10 @@ fn flow_from(root: &Path, owner: &Path) -> Command {
     cmd.arg("--root").arg(root);
     // Isolate user config per test: nothing here may read the real ~/.config.
     cmd.env("XDG_CONFIG_HOME", owner.join("xdg"));
+    // `owner` stands in for the machine's home directory too, which is what
+    // bounds the project walk — without it the walk would stop at `root` and a
+    // test that puts a preset in an ancestor would have nowhere to put it.
+    cmd.env("HOME", owner);
     cmd
 }
 
@@ -2048,5 +2052,67 @@ fn a_default_preset_that_resolves_to_nothing_is_said_so_in_the_listing() {
     assert!(
         out.contains("gone"),
         "the listing says nothing about a default that resolves to nothing:\n{out}"
+    );
+}
+
+#[test]
+fn the_project_walk_stops_at_your_home_directory() {
+    let outer = TempDir::new().unwrap();
+    let home = outer.path().join("home/someone");
+    let repo = home.join("proj");
+    std::fs::create_dir_all(&repo).unwrap();
+    write_preset(&home.join(".flow/presets"), "inside-home", "Yours.");
+    write_preset(
+        &outer.path().join(".flow/presets"),
+        "above-home",
+        "In a directory nobody owns.",
+    );
+
+    let mut cmd = Command::cargo_bin("flow").unwrap();
+    cmd.arg("--root").arg(&repo);
+    cmd.env("HOME", &home);
+    cmd.env("XDG_CONFIG_HOME", home.join("xdg"));
+    let out = stdout(cmd.arg("presets"));
+
+    assert!(
+        out.contains("inside-home"),
+        "a preset inside your home was unreachable:\n{out}"
+    );
+    // A preset carries the launcher argv `flow go` spawns, so one sitting above
+    // anything you own must not beat what ships.
+    assert!(
+        !out.contains("above-home"),
+        "a preset above your home directory was read:\n{out}"
+    );
+}
+
+#[test]
+fn the_project_walk_reaches_the_repository_root_outside_your_home() {
+    let outer = TempDir::new().unwrap();
+    let repo_root = outer.path().join("srv/monorepo");
+    let pkg = repo_root.join("packages/api");
+    std::fs::create_dir_all(&pkg).unwrap();
+    std::fs::create_dir_all(repo_root.join(".git")).unwrap();
+    write_preset(&repo_root.join(".flow/presets"), "house", "The monorepo's.");
+    write_preset(
+        &outer.path().join(".flow/presets"),
+        "above-repo",
+        "Outside the repository.",
+    );
+
+    let mut cmd = Command::cargo_bin("flow").unwrap();
+    cmd.arg("--root").arg(&pkg);
+    // Home is somewhere else entirely, so the repository is the only bound.
+    cmd.env("HOME", outer.path().join("elsewhere"));
+    cmd.env("XDG_CONFIG_HOME", outer.path().join("xdg"));
+    let out = stdout(cmd.arg("presets"));
+
+    assert!(
+        out.contains("house"),
+        "the repository root's preset never reached the package:\n{out}"
+    );
+    assert!(
+        !out.contains("above-repo"),
+        "a preset above the repository root was read:\n{out}"
     );
 }

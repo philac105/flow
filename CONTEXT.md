@@ -30,7 +30,8 @@ _Avoid_: template, default, built-in
 
 **Preset Path**:
 The ordered list of places Presets are read from, nearest owner first: the
-**project** (`.flow/presets/`, in the repo or any ancestor of it), the **user**
+**project** (`.flow/presets/`, in the repo and every ancestor up to your
+repository root or your home directory, whichever is farther), the **user**
 (`$XDG_CONFIG_HOME/flow/presets/`), then **shipped** (embedded in the binary).
 A nearer Preset shadows a farther one of the same name, and Flow only ever
 reads it.

@@ -171,7 +171,7 @@ Presets are found on the **Preset Path**, nearest owner first:
 
 | | |
 |---|---|
-| `<repo>/.flow/presets/` | the project's — and every ancestor's, so a monorepo can standardise what its packages reach for |
+| `<repo>/.flow/presets/` | the project's — and every ancestor's up to your repository root or your home directory, so a monorepo can standardise what its packages reach for |
 | `~/.config/flow/presets/` | yours, on this machine (`$XDG_CONFIG_HOME` if you set it) |
 | embedded in the binary | what ships with `flow` |
 
@@ -257,7 +257,7 @@ reasoning for each is in [`docs/adr/`](./docs/adr/).
 ## Development
 
 ```bash
-cargo test    # 113 integration tests, all driving the real binary
+cargo test    # 115 integration tests, all driving the real binary
 ```
 
 There is one seam: the CLI. Tests run the compiled binary against a temp
