@@ -10,7 +10,7 @@ updated = "2026-08-21T14:40:06.968Z"
 [[stage]]
 name = "grill"
 status = "done"
-artifact = ".scratch/presets-folder-3/grill.md"
+artifact = ".flow/artifacts/presets-folder-3/grill.md"
 started = "2026-08-21T00:01:10.922Z"
 completed = "2026-08-21T00:13:14.264Z"
 

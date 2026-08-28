@@ -223,7 +223,7 @@ recorded:
 ```
 $ flow next
 drift — resolve this before continuing:
-  ! grill: .scratch/auth-rework/grill.md exists but the stage is in progress — did a session die here?
+  ! grill: .flow/artifacts/auth-rework/grill.md exists but the stage is in progress — did a session die here?
 ```
 
 `flow` reports drift and never resolves it. Which of the two is lying is not

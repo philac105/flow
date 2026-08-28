@@ -13,7 +13,7 @@ description = "Shape it, build it, check it."
 name = "shape"
 description = "Work out what to build and why, until you could explain it to someone else."
 command = "/grill-me"
-artifact = ".flow/notes/{slug}.md"
+artifact = ".flow/artifacts/{slug}/shape.md"
 optional = false
 repeatable = true
 
