@@ -74,6 +74,12 @@ prints the prompt instead of spawning.
 ## Install
 
 ```bash
+cargo install --git https://github.com/philac105/flow
+```
+
+Not on crates.io yet, so it installs from the repository. From a checkout:
+
+```bash
 cargo install --path .
 ```
 

@@ -9,6 +9,11 @@ readme = "README.md"
 keywords = ["cli", "workflow", "agents", "productivity"]
 categories = ["command-line-utilities", "development-tools"]
 
+# Flow's own run files and the adapter it wrote for this repo are this
+# checkout's state, not the crate's. They ship no code and read as noise in a
+# published tarball.
+exclude = [".flow", ".claude"]
+
 [[bin]]
 name = "flow"
 path = "src/main.rs"
